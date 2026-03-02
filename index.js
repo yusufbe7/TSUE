@@ -32,7 +32,7 @@ const VIP_FILE = path.join(DATA_DIR, 'vip_users.json');
 const SESSION_FILE = path.join(DATA_DIR, 'session.json');
 
 const SUBJECTS_FILE = path.join(__dirname, 'subjects.json');
-
+const adminStates = {}; // Admin holatlarini saqlash uchun
 // 2. Bazalarni tekshirish va funksiyalar
 if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ users: {} }));
 
@@ -480,14 +480,13 @@ bot.command('admin', (ctx) => {
     if (ctx.from.id === ADMIN_ID) {
         const db = getDb();
         const statusEmoji = db.settings?.isMaintenance ? "🟢 Botni Yoqish" : "🛑 Botni To'xtatish";
-        const turboEmoji = db.settings?.turboMode ? "🚀 Turbo (O'chirish)" : "🚀 Turbo (Yoqish)";
         
         return ctx.reply(`🛠 **Admin Panel**`, 
             Markup.keyboard([
                 ['💰 Pullik versiya', '🆓 Bepul versiya'],
-                [statusEmoji, turboEmoji],
+                [statusEmoji, "🚀 Soxta ball berish"], // Shu yerga qo'shdik
                 ['🏆 Musobaqa boshqarish', '📊 Statistika'],
-                ['🗑 Foydalanuvchini o\'chirish', '🧹 Reytingni tozalash'], // Yangi tugma
+                ['🗑 Foydalanuvchini o\'chirish', '🧹 Reytingni tozalash'],
                 ['📣 Xabar tarqatish', '⬅️ Orqaga (Fanlar)']
             ]).resize());
     }
@@ -651,6 +650,62 @@ bot.use(async (ctx, next) => {
 });
 
 
+// 2. Inline tugmalar javobi
+bot.action("fake_self", async (ctx) => {
+    adminStates[ctx.from.id] = { targetId: ctx.from.id, step: 'wait_score' };
+    await ctx.answerCbQuery();
+    return ctx.reply("O'zingizga qancha ball qo'shmoqchisiz? (Faqat raqam yozing)");
+});
+
+bot.action("fake_other", async (ctx) => {
+    adminStates[ctx.from.id] = { step: 'wait_id' };
+    await ctx.answerCbQuery();
+    return ctx.reply("Foydalanuvchining Telegram ID raqamini kiriting:");
+});
+
+// 3. Admin kiritgan matnlarni ushlash
+bot.on("text", async (ctx, next) => {
+    const userId = ctx.from.id;
+    if (userId !== ADMIN_ID || !adminStates[userId]) return next(); // Admin bo'lmasa yoki rejim yoqilmagan bo'lsa o'tkazib yuborish
+
+    const state = adminStates[userId];
+
+    // ID kutish bosqichi
+    if (state.step === 'wait_id') {
+        const targetId = ctx.message.text.trim();
+        if (!/^\d+$/.test(targetId)) return ctx.reply("❌ Xato! ID faqat raqamlardan iborat bo'lishi kerak.");
+        
+        adminStates[userId].targetId = targetId;
+        adminStates[userId].step = 'wait_score';
+        return ctx.reply(`ID: ${targetId} uchun qancha ball qo'shmoqchisiz?`);
+    }
+
+    // Ball kutish bosqichi
+    if (state.step === 'wait_score') {
+        const score = parseFloat(ctx.message.text);
+        if (isNaN(score)) return ctx.reply("❌ Xato! Iltimos, faqat raqam kiriting.");
+
+        const targetId = state.targetId;
+
+        try {
+            // PostgreSQL bazasiga ballni qo'shish
+            // ON CONFLICT - agar user bazada bo'lmasa, yangi yaratadi
+            await pool.query(`
+                INSERT INTO users (id, name, score) 
+                VALUES ($1, $2, $3) 
+                ON CONFLICT (id) 
+                DO UPDATE SET score = users.score + $3
+            `, [targetId.toString(), "Admin tomonidan", score]);
+
+            await ctx.reply(`✅ Muvaffaqiyatli! \nID: ${targetId} profiliga ${score} ball qo'shildi.`);
+            delete adminStates[userId]; // Rejimni o'chirish
+        } catch (err) {
+            console.error(err);
+            await ctx.reply("⚠️ Bazada xatolik yuz berdi.");
+        }
+    }
+});
+
 // bot.hears("🗑 Foydalanuvchini o'chirish", (ctx) => {
 //     if (ctx.from.id !== ADMIN_ID) return;
 //     ctx.session.adminStep = 'wait_delete_id';
@@ -747,7 +802,13 @@ bot.hears("🎓 Yo'nalishni qayta tanlash", (ctx) => {
 
 
 
-
+bot.hears("🚀 Soxta ball berish", async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    
+    return ctx.reply("Kimga ball bermoqchisiz?", Markup.inlineKeyboard([
+        [Markup.button.callback("🙋‍♂️ O'zimga", "fake_self"), Markup.button.callback("👤 Boshqaga", "fake_other")]
+    ]));
+});
 
 
 
