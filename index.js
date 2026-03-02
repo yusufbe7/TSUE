@@ -13,49 +13,95 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const REQUIRED_CHANNEL = '@student_aitex'; // Kanal yuzernamini yozing (@ bilan)
 const CHANNEL_ID = '-1001234567890'; // Kanal ID raqamini yozing (agar bilsangiz)
 
-// Railway uchun doimiy papka (Volume)
-const DATA_DIR = '/data'; 
 
-if (!fs.existsSync(DATA_DIR)) {
+
+const { Pool } = require('pg');
+
+// Railway bazasiga ulanish
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL,
+    ssl: { rejectUnauthorized: false }
+});
+
+// Jadvalni bot ishga tushgan zahoti yaratish (Agar yo'q bo'lsa)
+async function initDb() {
     try {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                username TEXT,
+                univ TEXT,
+                yonalish TEXT,
+                kurs TEXT,
+                semester TEXT,
+                score FLOAT DEFAULT 0,
+                is_registered BOOLEAN DEFAULT FALSE,
+                is_vip BOOLEAN DEFAULT FALSE,
+                step TEXT
+            );
+        `);
+        console.log("✅ PostgreSQL bazasi tayyor!");
     } catch (err) {
-        console.log("LocalStorage rejimi faollashdi");
+        console.error("❌ Baza yaratishda xato:", err);
     }
 }
+initDb();
+
+
+
+
+
+
+
+
+
+
+
+
+// Railway uchun doimiy papka (Volume)
+// const DATA_DIR = '/data'; 
+
+// if (!fs.existsSync(DATA_DIR)) {
+//     try {
+//         fs.mkdirSync(DATA_DIR, { recursive: true });
+//     } catch (err) {
+//         console.log("LocalStorage rejimi faollashdi");
+//     }
+// }
 
 // Fayl manzillari
-const DB_FILE = path.join(DATA_DIR, 'ranking_db.json');
-const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
-const QUESTIONS_FILE = path.join(DATA_DIR, 'custom_questions.json');
-const VIP_FILE = path.join(DATA_DIR, 'vip_users.json');
-const SESSION_FILE = path.join(DATA_DIR, 'session.json');
+// const DB_FILE = path.join(DATA_DIR, 'ranking_db.json');
+// const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+// const QUESTIONS_FILE = path.join(DATA_DIR, 'custom_questions.json');
+// const VIP_FILE = path.join(DATA_DIR, 'vip_users.json');
+// const SESSION_FILE = path.join(DATA_DIR, 'session.json');
 
-const SUBJECTS_FILE = path.join(__dirname, 'subjects.json');
-const adminStates = {}; // Admin holatlarini saqlash uchun
-// 2. Bazalarni tekshirish va funksiyalar
-if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ users: {} }));
+// const SUBJECTS_FILE = path.join(__dirname, 'subjects.json');
+// // const adminStates = {}; // Admin holatlarini saqlash uchun
+// // 2. Bazalarni tekshirish va funksiyalar
+// if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ users: {} }));
 
-function getDb() {
-    try {
-        if (!fs.existsSync(DB_FILE)) {
-            fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, settings: {} }, null, 2));
-        }
-        const data = fs.readFileSync(DB_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        console.error("Bazani o'qishda xato:", error);
-        return { users: {}, settings: {} };
-    }
-}
+// function getDb() {
+//     try {
+//         if (!fs.existsSync(DB_FILE)) {
+//             fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, settings: {} }, null, 2));
+//         }
+//         const data = fs.readFileSync(DB_FILE, 'utf8');
+//         return JSON.parse(data);
+//     } catch (error) {
+//         console.error("Bazani o'qishda xato:", error);
+//         return { users: {}, settings: {} };
+//     }
+// }
 
-function saveDb(db) {
-    try {
-        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
-    } catch (err) {
-        console.error("FAYLGA YOZISHDA XATO:", err);
-    }
-}
+// function saveDb(db) {
+//     try {
+//         fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+//     } catch (err) {
+//         console.error("FAYLGA YOZISHDA XATO:", err);
+//     }
+// }
 
 // Bot sozlamalarini yuklash
 let botSettings = { timeLimit: 60 }; 
@@ -123,96 +169,92 @@ function getProgressBar(current, total) {
     return "█".repeat(progress) + "░".repeat(size - progress);
 }
 
-function updateGlobalScore(userId, name, username, score) {
+async function updateGlobalScore(userId, name, username, score) {
     try {
-        let db = getDb();
-        if (!db.users[userId]) {
-            db.users[userId] = { 
-                name: name || "Foydalanuvchi", 
-                username: username ? `@${username}` : "Lichka yopiq",
-                score: 0, 
-                totalTests: 0 
-            };
-        }
-        db.users[userId].totalTests = (db.users[userId].totalTests || 0) + 1;
+        // SQL query: Foydalanuvchi bo'lsa ballni qo'shadi, bo'lmasa yangi qator ochadi
+        const query = `
+            INSERT INTO users (id, name, username, score)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (id) 
+            DO UPDATE SET 
+                score = users.score + $4,
+                name = EXCLUDED.name,
+                username = EXCLUDED.username;
+        `;
         
-        // Ballarni shunchaki qo'shish (Eski kodingizda faqat eng yuqorisini saqlardi)
-        db.users[userId].score = (db.users[userId].score || 0) + score;
+        const values = [userId.toString(), name, username ? `@${username}` : "Lichka yopiq", score];
         
-        db.users[userId].name = name;
-        db.users[userId].username = username ? `@${username}` : "Lichka yopiq";
+        await pool.query(query, values);
+        console.log(`✅ Ball saqlandi: ${name} (+${score})`);
         
-        saveDb(db); // Biz yangilagan saveDb ni chaqiramiz
-    } catch (error) { console.error("Bazaga yozishda xato:", error); }
+    } catch (error) { 
+        console.error("❌ PostgreSQL-ga yozishda xato:", error); 
+    }
 }
 
-function getLeaderboard(ctx) {
-    const db = getDb();
-    if (!db.users) return "Hozircha hech kim test topshirmadi.";
-    
-    const usersArray = Object.values(db.users);
-    if (usersArray.length === 0) return "Hozircha hech kim test topshirmadi.";
-    
-    // BU YERGA O'ZINGIZNING ID RAQAMINGIZNI YOZING
-    const ADMIN_ID = 123456789; 
-    const isRequesterAdmin = ctx && ctx.from && ctx.from.id === ADMIN_ID;
+async function getLeaderboard(ctx) {
+    try {
+        // 1. Bazadan ballar bo'yicha saralangan TOP 10 talikni olish
+        const res = await pool.query(
+            'SELECT name, username, score FROM users WHERE score > 0 ORDER BY score DESC LIMIT 10'
+        );
+        const sorted = res.rows;
 
-    // Saralash (ballar bo'yicha)
-    const sorted = usersArray.sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 10);
-    
-    let res = "🏆 <b>TOP 10 REYTING</b>\n\n";
-    sorted.forEach((u, i) => {
-        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔹";
-        const name = u.name || "Nomalum";
-        
-        // NIK (username) FAQAT ADMIN UCHUN SHAKLLANTIRILADI
-        let userLink = "";
-        if (isRequesterAdmin && u.username && u.username !== "Lichka yopiq") {
-            userLink = ` (@${u.username})`;
+        if (sorted.length === 0) {
+            return "🏆 Hozircha hech kim test topshirmadi. Birinchi bo'ling! 🚀";
         }
 
-        res += `${medal} <b>${name}</b>${userLink} — ${(u.score || 0).toFixed(1)} ball\n`;
-    });
-    return res;
+        // Admin ekanligini tekshirish
+        const isRequesterAdmin = ctx && ctx.from && ctx.from.id === ADMIN_ID;
+
+        let leaderboardMsg = "🏆 <b>TOP 10 REYTING</b>\n\n";
+        
+        sorted.forEach((u, i) => {
+            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔹";
+            const name = escapeHTML(u.name) || "Noma'lum";
+            
+            // Username faqat admin uchun ko'rinadi
+            let userLink = "";
+            if (isRequesterAdmin && u.username && u.username !== "Lichka yopiq") {
+                userLink = ` (<code>${u.username}</code>)`;
+            }
+
+            leaderboardMsg += `${medal} <b>${name}</b>${userLink} — <b>${(u.score || 0).toFixed(1)}</b> ball\n`;
+        });
+
+        return leaderboardMsg;
+    } catch (error) {
+        console.error("Reyting yuklashda xato:", error);
+        return "⚠️ Reytingni yuklashda texnik xatolik yuz berdi.";
+    }
 }
 
-function showSubjectMenu(ctx) {
+async function showSubjectMenu(ctx) {
     try {
-        const db = getDb();
-        const userId = ctx.from.id;
+        const userId = ctx.from.id.toString();
 
-        // 1. Bazada users obyekti borligini tekshirish
-        if (!db || !db.users) {
-            return ctx.reply("❌ Malumotlar bazasi topilmadiku umuman. Iltimos, /start bosing.");
-        }
+        // 1. Foydalanuvchini PostgreSQL bazasidan qidiramiz
+        const res = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+        const user = res.rows[0];
 
-        const user = db.users[userId];
-
-        // 2. Foydalanuvchi ro'yxatdan o'tganini tekshirish
-        if (!user || !user.isRegistered) {
+        // 2. Foydalanuvchi bazada borligini va ro'yxatdan o'tganini tekshirish
+        if (!user || !user.is_registered) {
             return ctx.reply("⚠️ Iltimos, avval /start buyrug'ini bosing va ro'yxatdan o'ting.");
         }
 
         let keyboard = [];
+        const yonalish = user.yonalish;
 
         // ==========================================
         // 🎭 YO'NALISHLARGA QARAB TUGMALARNI SARALASH
         // ==========================================
-        const yonalish = user.yonalish;
-
         if (yonalish === "Dasturiy Injiniring") {
             keyboard = [
                 ["📝 Akademik yozuv", "📜 Tarix"],
                 ["➕ Matematika", "🧲 Fizika"],
                 ["💻 Dasturlash 1", "🇬🇧 Perfect English"]
             ];
-        } else if (yonalish === "Kiberxavfsizlik") {
-            keyboard = [
-                ["🧲 Fizika", "📜 Tarix"],
-                ["📝 Akademik yozuv", "➕ Matematika"],
-                ["🇬🇧 Perfect English", "💻 Dasturlash 1"]
-            ];
-        } else if (yonalish === "Sun'iy intelekt") {
+        } else if (yonalish === "Kiberxavfsizlik" || yonalish === "Sun'iy intelekt") {
             keyboard = [
                 ["🧲 Fizika", "📜 Tarix"],
                 ["📝 Akademik yozuv", "➕ Matematika"],
@@ -233,10 +275,10 @@ function showSubjectMenu(ctx) {
         // ==========================================
         // ⚙️ QO'SHIMCHA SOZLAMALAR
         // ==========================================
-        if (db.settings?.turboMode) {
-            keyboard.unshift(["🚀 TURBO YODLASH (16:30)"]);
-        }
-
+        
+        // Bu yerda db.settings endi bazada bo'lishi kerak yoki oddiy global o'zgaruvchi
+        // Hozircha oddiy holatda qoldiramiz
+        
         if (typeof tournament !== 'undefined' && tournament.isActive) {
             keyboard.push(["🏆 Musobaqada qatnashish"]);
         }
@@ -254,20 +296,29 @@ function showSubjectMenu(ctx) {
 
     } catch (error) {
         console.error("CRITICAL ERROR in showSubjectMenu:", error);
-        return ctx.reply("❌ Menyuni yuklashda xatolik yuz berdi. Qayta urinib ko'ring yoki /start bosing.");
+        return ctx.reply("❌ Menyuni yuklashda xatolik yuz berdi. Qayta urinib ko'ring.");
     }
 }
 
-function makeUserVip(userId) {
-    const db = getDb();
-    if (db.users[userId]) {
-        db.users[userId].isVip = true;
-        saveDb(db);
-        return true;
-    }
-    return false;
-}
+async function makeUserVip(userId) {
+    try {
+        // SQL query: Berilgan ID dagi foydalanuvchining is_vip ustunini true qiladi
+        const res = await pool.query(
+            'UPDATE users SET is_vip = true WHERE id = $1',
+            [userId.toString()]
+        );
 
+        // Agar o'zgarish yuz bergan bo'lsa (rowCount > 0), true qaytaradi
+        if (res.rowCount > 0) {
+            console.log(`✅ Foydalanuvchi ${userId} VIP qilindi.`);
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error("❌ VIP qilishda xatolik:", error);
+        return false;
+    }
+}
 async function sendQuestion(ctx, isNew = false) {
     const s = ctx.session;
     const userId = ctx.from.id;
@@ -421,33 +472,42 @@ async function checkSubscription(ctx) {
 }
 
 async function showProfile(ctx) {
-    const db = getDb();
-    const userId = ctx.from.id;
-    const user = db.users[userId];
+    try {
+        const userId = ctx.from.id.toString();
+        
+        // 1. Foydalanuvchi ma'lumotlarini bazadan olish
+        const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+        const user = userRes.rows[0];
 
-    if (!user) {
-        return ctx.reply("Siz hali test topshirmagansiz. Avval test yechib ko'ring!");
+        if (!user) {
+            return ctx.reply("Siz hali test topshirmagansiz. Avval test yechib ko'ring! ✍️");
+        }
+
+        // 2. Reytingni hisoblash (o'zidan balandroq balli odamlarni sanash orqali)
+        const rankRes = await pool.query('SELECT count(*) FROM users WHERE score > $1', [user.score]);
+        const rank = parseInt(rankRes.rows[0].count) + 1;
+        
+        // Jami foydalanuvchilar soni
+        const totalRes = await pool.query('SELECT count(*) FROM users');
+        const totalUsers = totalRes.rows[0].count;
+
+        let profileMsg = `👤 <b>SIZNING PROFILINGIZ</b>\n\n`;
+        profileMsg += `🆔 <b>ID:</b> <code>${userId}</code>\n`;
+        profileMsg += `👤 <b>Ism:</b> ${user.name || "Kiritilmagan"}\n`;
+        profileMsg += `🏆 <b>Umumiy ball:</b> ${(user.score || 0).toFixed(1)} ball\n`;
+        profileMsg += `📈 <b>Reytingdagi o'rningiz:</b> ${rank}-o'rin (jami ${totalUsers} tadan)\n\n`;
+        
+        if (rank <= 10) {
+            profileMsg += `🌟 Siz TOP-10 talikdasiz! Baraka bering!`;
+        } else {
+            profileMsg += `🚀 TOP-10 ga kirish uchun yana biroz harakat qiling!`;
+        }
+
+        return ctx.replyWithHTML(profileMsg);
+    } catch (error) {
+        console.error("Profil xatosi:", error);
+        ctx.reply("Profilni yuklashda texnik xatolik yuz berdi.");
     }
-
-    // Reytingdagi o'rnini aniqlash
-    const usersArray = Object.values(db.users);
-    const sortedUsers = usersArray.sort((a, b) => (b.score || 0) - (a.score || 0));
-    const rank = sortedUsers.findIndex(u => u.id === userId) + 1;
-
-    let profileMsg = `👤 <b>SIZNING PROFILINGIZ</b>\n\n`;
-    profileMsg += `🆔 <b>ID:</b> <code>${userId}</code>\n`;
-    profileMsg += `👤 <b>Ism:</b> ${user.name || "Kiritilmagan"}\n`;
-    profileMsg += `🏆 <b>Umumiy ball:</b> ${user.score.toFixed(1)} ball\n`;
-    profileMsg += `📈 <b>Reytingdagi o'rningiz:</b> ${rank}-o'rin (jami ${usersArray.length} tadan)\n\n`;
-    
-    // Foydalanuvchiga qo'shimcha motivatsiya
-    if (rank <= 10) {
-        profileMsg += `🌟 Siz TOP-10 talikdasiz! Baraka bering!`;
-    } else {
-        profileMsg += `🚀 TOP-10 ga kirish uchun yana biroz harakat qiling!`;
-    }
-
-    return ctx.replyWithHTML(profileMsg);
 }
 
 // BU FUNKSIYANI KODINGIZNING OXIRIGA QO'SHIB QO'YING
@@ -894,141 +954,102 @@ bot.action("cancel_clear", (ctx) => ctx.deleteMessage());
 // 2. ID raqami yozilganda ishlaydigan logika
 bot.on('text', async (ctx, next) => {
     const s = ctx.session;
-    const db = getDb();
-    const userId = ctx.from.id;
-    const user = db.users[userId];
+    const userId = ctx.from.id.toString();
     const text = ctx.message.text.trim();
 
-    // 🛡 0. KOMANDA FILTRI
     if (text.startsWith('/')) return next();
 
+    // 1. Bazadan foydalanuvchini olish
+    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    const user = userRes.rows[0];
+
     // ==========================================
-    // 🛡 1. ADMIN QISMI (Xabar yuborish)
+    // 🛡 1. ADMIN QISMI
     // ==========================================
-    if (ctx.from.id === ADMIN_ID) {
-        if (s.adminStep === 'wait_broadcast_text') {
-            const users = Object.keys(db.users);
-            let count = 0;
-            for (const id of users) {
-                try { await ctx.telegram.sendMessage(id, text); count++; } catch (e) {}
-            }
-            s.adminStep = null;
-            return ctx.reply(`✅ Xabar ${count} ta foydalanuvchiga yuborildi!`);
+    if (ctx.from.id === ADMIN_ID && s.adminStep === 'wait_broadcast_text') {
+        const allUsers = await pool.query('SELECT id FROM users');
+        let count = 0;
+        for (const row of allUsers.rows) {
+            try { await ctx.telegram.sendMessage(row.id, text); count++; } catch (e) {}
         }
-        // ... boshqa admin amallari
+        s.adminStep = null;
+        return ctx.reply(`✅ Xabar ${count} ta foydalanuvchiga yuborildi!`);
     }
 
     // ==========================================
-    // ⚙️ 2. SOZLAMALAR: TAHRIRLASH MANTIQI
+    // ⚙️ 2. SOZLAMALAR: TAHRIRLASH
     // ==========================================
-    if (user && user.isRegistered) {
-        // A) Ismni tahrirlash
+    if (user && user.is_registered) {
         if (user.step === 'edit_name') {
             if (text.length < 3) return ctx.reply("❌ Ism juda qisqa. Qaytadan kiriting:");
-            user.name = text;
-            user.step = 'completed';
-            saveDb(db);
-            await ctx.reply(`✅ Ismingiz muvaffaqiyatli o'zgartirildi: ${text}`);
+            await pool.query('UPDATE users SET name = $1, step = $2 WHERE id = $3', [text, 'completed', userId]);
+            await ctx.reply(`✅ Ismingiz o'zgartirildi: ${text}`);
             return showSubjectMenu(ctx);
         }
     }
 
     // ==========================================
-    // 📝 3. RO'YXATDAN O'TISH (HIMOYA VA TAHRIR BILAN)
+    // 📝 3. RO'YXATDAN O'TISH (PostgreSQL bilan)
     // ==========================================
-    if (!user || !user.isRegistered) {
+    if (!user || !user.is_registered) {
         if (!user) {
-            db.users[userId] = { id: userId, step: 'wait_name', isRegistered: false };
-            saveDb(db);
+            // Yangi foydalanuvchini bazaga qo'shish
+            await pool.query('INSERT INTO users (id, step, is_registered) VALUES ($1, $2, $3)', [userId, 'wait_name', false]);
+            return ctx.reply("Assalomu alaykum! Ro'yxatdan o'tish uchun ism-familiyangizni yozing:");
         }
-        const currentUser = db.users[userId];
 
-        // Ism saqlash (Ham yangi, ham tahrir vaqtidagi himoya)
-        if (currentUser.step === 'wait_name') {
-            const forbidden = ["📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", "💻 Dasturlash 1", "🧲 Fizika", "🇬🇧 Perfect English", "📊 Reyting", "👤 Profil", "⚙️ Sozlamalar"];
-            if (forbidden.includes(text) || text.length < 3) {
-                return ctx.reply("❌ Xato! Iltimos, tugmani bosmang, ism-familiyangizni qo'lda yozing:");
-            }
-            currentUser.name = text;
-            currentUser.step = 'wait_univ';
-            saveDb(db);
-            return ctx.reply(`Rahmat, ${text}!\n\nO'qish joyingizni tanlang:`, 
-                Markup.keyboard([["Alfraganus Universiteti", "Perfect Universiteti"], ["TATU", "TDPU"]]).oneTime().resize());
+        // Ism saqlash
+        if (user.step === 'wait_name') {
+            const forbidden = ["📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", "📊 Reyting", "👤 Profil"];
+            if (forbidden.includes(text) || text.length < 3) return ctx.reply("❌ Xato! Ismingizni qo'lda yozing:");
+            
+            await pool.query('UPDATE users SET name = $1, step = $2 WHERE id = $3', [text, 'wait_univ', userId]);
+            return ctx.reply(`Rahmat, ${text}!\n\nOTMni tanlang:`, 
+                Markup.keyboard([["Alfraganus Universiteti", "TATU"], ["TDPU"]]).oneTime().resize());
         }
 
         // Universitet saqlash
-        if (currentUser.step === 'wait_univ') {
-            const univs = ["Alfraganus Universiteti", "Perfect Universiteti", "TATU", "TDPU"];
-            if (!univs.includes(text)) return ctx.reply("⚠️ Universitetni tugma orqali tanlang:");
-            currentUser.univ = text;
-            currentUser.step = 'wait_kurs';
-            saveDb(db);
+        if (user.step === 'wait_univ') {
+            await pool.query('UPDATE users SET univ = $1, step = $2 WHERE id = $3', [text, 'wait_kurs', userId]);
             return ctx.reply("Nechanchi kursda o'qiysiz?", 
                 Markup.keyboard([["1-kurs", "2-kurs"], ["3-kurs", "4-kurs"]]).oneTime().resize());
         }
 
-        // 1. Kurs saqlash (O'zgarishsiz qoladi, faqat Sun'iy intelekt tugmasi qo'shilgan)
-if (currentUser.step === 'wait_kurs') {
-    const kurslar = ["1-kurs", "2-kurs", "3-kurs", "4-kurs"];
-    if (!kurslar.includes(text)) return ctx.reply("⚠️ Kursni tugma orqali tanlang:");
-    
-    currentUser.kurs = text;
-    currentUser.step = 'wait_yonalish';
-    saveDb(db);
-    
-    let buttons = text === "1-kurs" 
-        ? [["Dasturiy Injiniring", "Kiberxavfsizlik"], ["Sun'iy intelekt"]] 
-        : [["Magistratura", "Boshqa"]];
-        
-    return ctx.reply(`Yo'nalishingizni tanlang:`, Markup.keyboard(buttons).oneTime().resize());
-}
+        // Kurs saqlash
+        if (user.step === 'wait_kurs') {
+            await pool.query('UPDATE users SET kurs = $1, step = $2 WHERE id = $3', [text, 'wait_yonalish', userId]);
+            let buttons = text === "1-kurs" ? [["Dasturiy Injiniring", "Kiberxavfsizlik"]] : [["Boshqa"]];
+            return ctx.reply(`Yo'nalishingizni tanlang:`, Markup.keyboard(buttons).oneTime().resize());
+        }
 
-// 2. Yo'nalish saqlash va SEMESTR SO'RASH (O'zgartirilgan qismi)
-if (currentUser.step === 'wait_yonalish') {
-    currentUser.yonalish = text;
-    currentUser.step = 'wait_semester'; // Darhol tugatmaymiz, keyingi stepga o'tamiz
-    saveDb(db);
-    
-    return ctx.reply("Endi o'qiyotgan semestringizni tanlang:", 
-        Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
-}
+        // Yo'nalish saqlash
+        if (user.step === 'wait_yonalish') {
+            await pool.query('UPDATE users SET yonalish = $1, step = $2 WHERE id = $3', [text, 'wait_semester', userId]);
+            return ctx.reply("Semestrni tanlang:", Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
+        }
 
-// 3. Semestrni tekshirish va Yakunlash (YANGI QO'SHILGAN QISMI)
-if (currentUser.step === 'wait_semester') {
-    if (text === "2-semestr") {
-        // Foydalanuvchini to'xtatib, faqat 1-semestrga yo'naltiramiz
-        return ctx.reply("❌ Hali 2-semestr darslari yakunlanmadi. Iltimos, hozircha faqat 1-semestr testlaridan foydalanib turing!", 
-            Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
-    }
-
-    if (text === "1-semestr") {
-        currentUser.semester = text;
-        currentUser.isRegistered = true;
-        currentUser.step = 'completed'; // Endi ro'yxatdan o'tish tugadi
-        saveDb(db);
-        
-        await ctx.reply(`✅ Ma'lumotlar saqlandi! \nYo'nalish: ${currentUser.yonalish}\nSemestr: ${text}`);
-        return showSubjectMenu(ctx);
-    }
-
-    return ctx.reply("⚠️ Iltimos, semestrni tugma orqali tanlang:");
-}
-        return ctx.reply("Iltimos, ro'yxatdan o'tishni yakunlang.");
+        // Semestr saqlash va YAKUNLASH
+        if (user.step === 'wait_semester') {
+            if (text === "1-semestr") {
+                await pool.query('UPDATE users SET semester = $1, is_registered = $2, step = $3 WHERE id = $4', [text, true, 'completed', userId]);
+                await ctx.reply(`✅ Ro'yxatdan o'tish yakunlandi!`);
+                return showSubjectMenu(ctx);
+            }
+            return ctx.reply("Hozircha faqat 1-semestr mavjud.");
+        }
     }
 
     return next();
 });
 
 bot.on(['text', 'photo', 'video', 'animation', 'document'], async (ctx, next) => {
-    // Agar matn bo'lsa matnni, rasm ostida yozilgan bo'lsa captionni oladi
     const text = ctx.message.text || ctx.message.caption; 
     const userId = ctx.from.id;
     const username = ctx.from.username || "Lichka yopiq";
 
-    // Komandalar bo'lsa o'tkazib yuboramiz
     if (text && text.startsWith('/')) return next();
 
-    // 1. HAR QANDAY HOLATDA BEKOR QILISH (ENG TEPADA TURISHI SHART)
+    // 1. BEKOR QILISH
     if (text === '🚫 Bekor qilish') {
         ctx.session.waitingForForward = false;
         ctx.session.waitingForTime = false;
@@ -1038,11 +1059,9 @@ bot.on(['text', 'photo', 'video', 'animation', 'document'], async (ctx, next) =>
         return showSubjectMenu(ctx);
     }
 
-    
+    // 2. TO'LOV CHEKI
     if (ctx.session.waitingForReceipt && ctx.message.photo) {
         ctx.session.waitingForReceipt = false;
-        const userId = ctx.from.id;
-        
         await ctx.telegram.sendPhoto(ADMIN_ID, ctx.message.photo[0].file_id, {
             caption: `🔔 <b>Yangi to'lov!</b>\n👤 Foydalanuvchi: ${ctx.from.first_name}\n🆔 ID: <code>${userId}</code>`,
             parse_mode: 'HTML',
@@ -1054,150 +1073,66 @@ bot.on(['text', 'photo', 'video', 'animation', 'document'], async (ctx, next) =>
         return ctx.reply("✅ Chekingiz adminga yuborildi. Tasdiqlangach sizga xabar boradi.");
     }
 
-    // 2. ADMIN: Xabar tarqatish (Media va Matn uchun)
+    // 3. ADMIN: XABAR TARQATISH (PostgreSQL orqali)
     if (userId === ADMIN_ID && ctx.session.waitingForForward) {
         ctx.session.waitingForForward = false;
-        const db = getDb();
-        const users = Object.keys(db.users || {});
+        
+        // Bazadagi barcha foydalanuvchilarni olamiz
+        const res = await pool.query('SELECT id FROM users');
+        const users = res.rows;
         let successCount = 0;
 
         await ctx.reply(`📣 Xabar ${users.length} kishiga yuborilmoqda...`);
 
-        for (const uId of users) {
+        for (const user of users) {
             try {
-                // copyMessage — har qanday formatni (rasm, video, text) aslidek yuboradi
-                await ctx.telegram.copyMessage(uId, ctx.chat.id, ctx.message.message_id);
+                await ctx.telegram.copyMessage(user.id, ctx.chat.id, ctx.message.message_id);
                 successCount++;
                 if (successCount % 25 === 0) await new Promise(r => setTimeout(r, 500)); 
             } catch (e) {
-                console.log(`Bloklangan foydalanuvchi: ${uId}`);
+                console.log(`Bloklangan yoki xato ID: ${user.id}`);
             }
         }
-        await ctx.reply(`✅ Xabar yakunlandi!\n\nJami: ${users.length}\nYuborildi: ${successCount}`);
+        await ctx.reply(`✅ Xabar yakunlandi!\n\nYuborildi: ${successCount}`);
         return showSubjectMenu(ctx);
     }
 
-    // 3. ADMIN: Vaqtni o'zgartirish
-    if (userId === ADMIN_ID && ctx.session.waitingForTime) {
-        const newTime = parseInt(text);
-        if (isNaN(newTime) || newTime < 5) return ctx.reply("❌ Xato raqam! Kamida 5 kiriting:");
-        botSettings.timeLimit = newTime;
-        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(botSettings));
-        ctx.session.waitingForTime = false;
-        await ctx.reply(`✅ Savol vaqti ${newTime} soniyaga yangilandi.`);
-        return showSubjectMenu(ctx);
-    }
+    // 4. ADMIN: VAQT VA FAN SOZLAMALARI (Agar kerak bo'lsa bularni ham bazaga ulash mumkin, 
+    // lekin hozircha faylda qolsa ham ishlashga xalaqit bermaydi)
 
-    // 4. ADMIN: Yangi fan qo'shish (Ismi)
-    if (userId === ADMIN_ID && ctx.session.waitingForSubjectName) {
-        ctx.session.newSubName = text;
-        ctx.session.waitingForSubjectName = false;
-        ctx.session.waitingForSubjectQuestions = true;
-        return ctx.reply(`"${text}" fani uchun savollarni JSON formatida yuboring:`, 
-            Markup.keyboard([['🚫 Bekor qilish']]).resize());
-    }
-
-    // 5. ADMIN: Fan savollari (JSON)
-    if (userId === ADMIN_ID && ctx.session.waitingForSubjectQuestions) {
-        try {
-            const qs = JSON.parse(text);
-            const key = ctx.session.newSubName.toLowerCase().replace(/ /g, '_');
-            SUBJECTS[key] = { title: ctx.session.newSubName, questions: qs };
-            ctx.session.waitingForSubjectQuestions = false;
-            await ctx.reply("✅ Yangi fan muvaffaqiyatli qo'shildi!");
-            return showSubjectMenu(ctx);
-        } catch (e) {
-            return ctx.reply("❌ JSON xatosi! Formatni tekshirib qaytadan yuboring:");
-        }
-    }
-
-    
-    // 6. FOYDALANUVCHI: Ism kiritish (TO'G'IRLANGAN VARIANT)
+    // 5. FOYDALANUVCHI: ISM KIRITISH (PostgreSQL orqali)
     if (ctx.session.waitingForName) {
         const input = text.trim();
-
-        // Ism o'rniga menyu tugmalarini bosishdan himoya
-        const menuButtons = [
-            "📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", 
-            "💻 Dasturlash 1", "🧲 Fizika", "🇬🇧 English",
-            "📊 Reyting", "👤 Profil", "🚀 TURBO YODLASH (16:30)"
-        ];
+        const menuButtons = ["📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", "📊 Reyting", "👤 Profil"];
 
         if (menuButtons.includes(input)) {
-            return ctx.reply("⚠️ Iltimoss, ism o'rniga fan tugmalarini bosmang!\nAvval ismingizni yozib yuboring:");
+            return ctx.reply("⚠️ Iltimos, ism o'rniga tugmalarni bosmang!");
         }
 
-        if (!input || input.length < 3) {
-            return ctx.reply("❌ Ism juda qisqa! Kamida 3 ta harfdan iborat ism yozing:");
+        if (input.length < 3) {
+            return ctx.reply("❌ Ism juda qisqa!");
         }
+
+        // Bazaga ismni saqlash
+        await pool.query(`
+            UPDATE users SET 
+                name = $1, 
+                username = $2, 
+                is_registered = true, 
+                step = 'completed' 
+            WHERE id = $3`, 
+            [input, username !== "Lichka yopiq" ? `@${username}` : username, userId.toString()]
+        );
 
         ctx.session.userName = input;
         ctx.session.waitingForName = false;
-        
-        let db = getDb();
-        if(!db.users) db.users = {};
 
-        // Foydalanuvchi ma'lumotlarini yangilaymiz (eski ma'lumotlarni ochirmasdan)
-        db.users[userId] = { 
-            ...db.users[userId], // Eskidan bor ma'lumotlar (score, isVip va h.k.)
-            name: input, 
-            username: username !== "Lichka yopiq" ? `@${username}` : username,
-            date: new Date().toISOString() 
-        };
-
-        saveDb(db); // Bazaga saqlaymiz
         await ctx.reply(`✅ Rahmat, ${input}! Ismingiz muvaffaqiyatli saqlandi.`);
         return showSubjectMenu(ctx);
     }
 
     return next();
 });
-
-
-// bot.on('text', async (ctx, next) => {
-//     const s = ctx.session;
-//     const db = getDb();
-//     const userId = ctx.from.id;
-//     const user = db.users[userId];
-
-//     // 1. AGAR BOT ISM KUTAYOTGAN BO'LSA VA FOYDALANUVCHI ISM YOZSA
-//     if (s.waitingForName) {
-//         const inputName = ctx.message.text.trim();
-        
-//         if (inputName.length < 3) {
-//             return ctx.reply("Ism juda qisqa. Iltimos, ismingizni kiriting:");
-//         }
-
-//         // Bazada foydalanuvchi bormi?
-//         if (db.users[userId]) {
-//             db.users[userId].name = inputName; // Faqat ismni yangilaymiz
-//         } else {
-//             db.users[userId] = { 
-//                 id: userId, 
-//                 name: inputName, 
-//                 score: 0, 
-//                 isVip: false 
-//             };
-//         }
-
-//         saveDb(db); // Faylga saqlaymiz
-//         s.waitingForName = false; // Ism kutishni to'xtatamiz
-//         s.userName = inputName;
-
-//         await ctx.reply(`Rahmat, ${inputName}! Endi testlarni yechishingiz mumkin. ✅`);
-//         return showSubjectMenu(ctx);
-//     }
-
-//     // 2. MUHIM QISMI: AGAR FOYDALANUVCHI ISMI BAZADA BO'LSA, UNGA TUGMALARNI ISHLATISHGA RUXSAT BERISH
-//     if (user && user.name) {
-//         s.waitingForName = false; // Xavfsizlik uchun sessiyani ham to'g'irlab qo'yamiz
-//         return next(); // Keyingi tugma buyruqlariga o'tkazib yuboramiz
-//     }
-
-//     // 3. AGAR ISMI YO'Q BO'LSA, FAQAT SHUNDA ISM SO'RAYMIZ
-//     s.waitingForName = true;
-//     return ctx.reply("Davom etish uchun avval ismingizni kiriting:");
-// });
 
 
 
