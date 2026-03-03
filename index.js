@@ -658,23 +658,30 @@ bot.action("confirm_full_restart", async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery("Ruxsat yo'q!");
     
     try {
-        // 2. PostgreSQL EMAS, Faylni tozalash (Chunki siz Volume ishlatyapman dedingiz)
+        // 2. Faylni tozalash (Volume /data/ ichidagi)
         const emptyDb = { 
             users: {}, 
             settings: { isMaintenance: false, turboMode: false } 
         };
-        
-        // 3. saveDb funksiyasi orqali bo'sh obyektni yozib yuboramiz
         saveDb(emptyDb); 
         
-        // 4. Muvaffaqiyatli xabar
-        await ctx.editMessageText("✅ Barcha foydalanuvchilar va reyting tozalandi! Endi hamma ism kiritishdan boshlaydi.");
+        // 3. Admin xabarini yangilash
+        await ctx.editMessageText("✅ Barcha foydalanuvchilar va reyting tozalandi!");
+
+        // 4. 🔥 ENG MUHIMI: Foydalanuvchiga xabar yuborib, tugmalarni yopish
+        // Bu buyruq foydalanuvchi ekranidagi "Orqaga" va boshqa hamma tugmalarni o'chirib tashlaydi
+        await ctx.reply(
+            "🔄 Tizim admin tomonidan yangilandi.\n\n" +
+            "✨ Davom etish uchun ism va familiyangizni yozib yuboring:", 
+            Markup.removeKeyboard() 
+        );
         
     } catch (err) {
         console.error("Restart xatosi:", err);
         await ctx.reply("❌ Faylni tozalashda xatolik yuz berdi.");
     }
 });
+
 bot.action("cancel_restart", (ctx) => {
     ctx.deleteMessage();
     return ctx.reply("Amal bekor qilindi.");
@@ -986,19 +993,37 @@ bot.on('text', async (ctx, next) => {
 
         // --- ISM KIRITISH BOSQICHI ---
         if (currentUser.step === 'wait_name') {
-            const forbidden = ["📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", "💻 Dasturlash 1", "🧲 Fizika", "🇬🇧 Perfect English", "📊 Reyting", "👤 Profil", "⚙️ Sozlamalar"];
-            
-            // ISMNI TEKSHIRISH: Taqiqilangan tugma bosilsa yoki 3 ta harfdan kam bo'lsa
-            if (forbidden.includes(text) || text.length < 3) {
-                return ctx.reply("❌ Ism va familiyangizni to'g'ri kiriting!\n⚠️ Shart: Kamida 3 ta harfdan iborat bo'lishi va tugma bo'lmasligi kerak.");
-            }
+    // 🛡 Barcha turdagi menyu tugmalari (Admin + Foydalanuvchi)
+    const forbidden = [
+        "📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", 
+        "💻 Dasturlash 1", "🧲 Fizika", "🇬🇧 Perfect English", 
+        "📊 Reyting", "👤 Profil", "⚙️ Sozlamalar",
+        "⬅️ Orqaga (Fanlar)", "📊 Statistika", "🗑 Botni Restart qilish",
+        "💰 Pullik versiya", "🆓 Bepul versiya", "🧹 Reytingni tozalash"
+    ];
+    
+    // 1. ISMNI TEKSHIRISH: Taqiqilangan tugma yoki juda qisqa matn
+    if (forbidden.includes(text) || text.length < 3) {
+        return ctx.reply(
+            "❌ Xato! Iltimos, menyu tugmalaridan foydalanmang.\n\n" +
+            "👤 Ism va familiyangizni matn ko'rinishida yozib yuboring (kamida 3 ta harf):", 
+            Markup.removeKeyboard() // Ekrandagi tugmalarni majburan yopamiz
+        );
+    }
 
-            currentUser.name = text;
-            currentUser.step = 'wait_univ';
-            saveDb(db);
-            return ctx.reply(`Rahmat, ${text}!\n\nO'qish joyingizni tanlang:`, 
-                Markup.keyboard([["Alfraganus Universiteti", "Perfect Universiteti"], ["TATU", "TDPU"]]).oneTime().resize());
-        }
+    // 2. To'g'ri bo'lsa, saqlaymiz
+    currentUser.name = text;
+    currentUser.step = 'wait_univ';
+    saveDb(db);
+
+    return ctx.reply(
+        `✅ Rahmat, ${text}!\n\nEndi o'qish joyingizni tanlang:`, 
+        Markup.keyboard([
+            ["Alfraganus Universiteti", "Perfect Universiteti"], 
+            ["TATU", "TDPU"]
+        ]).oneTime().resize()
+    );
+}
 
         // Universitet saqlash
         if (currentUser.step === 'wait_univ') {
