@@ -654,17 +654,25 @@ bot.action("confirm_clear_rank", async (ctx) => {
 
 // 3. Tasdiqlash va Bazani tozalash
 bot.action("confirm_full_restart", async (ctx) => {
+    // 1. Admin ekanligini tekshirish
     if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery("Ruxsat yo'q!");
     
     try {
-        // Barcha foydalanuvchilarni o'chirish (yoki is_registered'ni false qilish)
-        // Biz jadvalni butunlay bo'shatamiz (TRUNCATE)
-        await pool.query('TRUNCATE TABLE users');
+        // 2. PostgreSQL EMAS, Faylni tozalash (Chunki siz Volume ishlatyapman dedingiz)
+        const emptyDb = { 
+            users: {}, 
+            settings: { isMaintenance: false, turboMode: false } 
+        };
         
-        await ctx.editMessageText("✅ Baza muvaffaqiyatli tozalandi! Endi barcha foydalanuvchilar qaytadan ro'yxatdan o'tishlari shart.");
+        // 3. saveDb funksiyasi orqali bo'sh obyektni yozib yuboramiz
+        saveDb(emptyDb); 
+        
+        // 4. Muvaffaqiyatli xabar
+        await ctx.editMessageText("✅ Barcha foydalanuvchilar va reyting tozalandi! Endi hamma ism kiritishdan boshlaydi.");
+        
     } catch (err) {
-        console.error(err);
-        await ctx.reply("❌ Xatolik yuz berdi.");
+        console.error("Restart xatosi:", err);
+        await ctx.reply("❌ Faylni tozalashda xatolik yuz berdi.");
     }
 });
 bot.action("cancel_restart", (ctx) => {
