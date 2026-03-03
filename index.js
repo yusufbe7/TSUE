@@ -499,8 +499,8 @@ bot.command('admin', (ctx) => {
         return ctx.reply(`🛠 **Admin Panel**`, 
             Markup.keyboard([
                 ['💰 Pullik versiya', '🆓 Bepul versiya'],
-                [statusEmoji, "🚀 Soxta ball berish"], // Shu yerga qo'shdik
-                ['🏆 Musobaqa boshqarish', '📊 Statistika'],
+                [statusEmoji, '📊 Statistika'],
+                ['🏆 Musobaqa boshqarish', '🗑 Botni Restart qilish'], // Yangi tugma shu yerda
                 ['🗑 Foydalanuvchini o\'chirish', '🧹 Reytingni tozalash'],
                 ['📣 Xabar tarqatish', '⬅️ Orqaga (Fanlar)']
             ]).resize());
@@ -652,6 +652,26 @@ bot.action("confirm_clear_rank", async (ctx) => {
     return ctx.answerCbQuery();
 });
 
+// 3. Tasdiqlash va Bazani tozalash
+bot.action("confirm_full_restart", async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery("Ruxsat yo'q!");
+    
+    try {
+        // Barcha foydalanuvchilarni o'chirish (yoki is_registered'ni false qilish)
+        // Biz jadvalni butunlay bo'shatamiz (TRUNCATE)
+        await pool.query('TRUNCATE TABLE users');
+        
+        await ctx.editMessageText("✅ Baza muvaffaqiyatli tozalandi! Endi barcha foydalanuvchilar qaytadan ro'yxatdan o'tishlari shart.");
+    } catch (err) {
+        console.error(err);
+        await ctx.reply("❌ Xatolik yuz berdi.");
+    }
+});
+bot.action("cancel_restart", (ctx) => {
+    ctx.deleteMessage();
+    return ctx.reply("Amal bekor qilindi.");
+});
+
 bot.use(async (ctx, next) => {
     const db = getDb();
     const userId = ctx.from?.id;
@@ -668,11 +688,14 @@ bot.use(async (ctx, next) => {
 // 2. Inline tugmalar javobi
 
 
-// bot.hears("🗑 Foydalanuvchini o'chirish", (ctx) => {
-//     if (ctx.from.id !== ADMIN_ID) return;
-//     ctx.session.adminStep = 'wait_delete_id';
-//     return ctx.reply("🗑 O'chirmoqchi bo'lgan foydalanuvchining ID raqamini kiriting (yoki profilidan nusxa olib tashlang):");
-// });
+bot.hears('🗑 Botni Restart qilish', (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    return ctx.reply("⚠️ **DIQQAT!**\n\nSiz rostdan ham barcha foydalanuvchilar ma'lumotlarini o'chirib, botni restart qilmoqchimisiz? Bu amalni ortga qaytarib bo'lmaydi!", 
+        Markup.inlineKeyboard([
+            [Markup.button.callback("✅ Ha, tasdiqlash", "confirm_full_restart")],
+            [Markup.button.callback("❌ Yo'q, rad etish", "cancel_restart")]
+        ]));
+});
 
 
 bot.hears(["🚀 Turbo (Yoqish)", "🚀 Turbo (O'chirish)"], async (ctx) => {
@@ -910,7 +933,7 @@ bot.action("cancel_clear", (ctx) => ctx.deleteMessage());
 // 2. ID raqami yozilganda ishlaydigan logika
 bot.on('text', async (ctx, next) => {
     const s = ctx.session;
-    const db = getDb();
+    const db = getDb(); // Railway Volume (/data/ranking_db.json) dan o'qiydi
     const userId = ctx.from.id;
     const user = db.users[userId];
     const text = ctx.message.text.trim();
@@ -931,40 +954,37 @@ bot.on('text', async (ctx, next) => {
             s.adminStep = null;
             return ctx.reply(`✅ Xabar ${count} ta foydalanuvchiga yuborildi!`);
         }
-        // ... boshqa admin amallari
     }
 
     // ==========================================
-    // ⚙️ 2. SOZLAMALAR: TAHRIRLASH MANTIQI
+    // 📝 2. RO'YXATDAN O'TISH (HIMOYA VA RESTARTDAN KEYINGI HOLAT)
     // ==========================================
-    if (user && user.isRegistered) {
-        // A) Ismni tahrirlash
-        if (user.step === 'edit_name') {
-            if (text.length < 3) return ctx.reply("❌ Ism juda qisqa. Qaytadan kiriting:");
-            user.name = text;
-            user.step = 'completed';
-            saveDb(db);
-            await ctx.reply(`✅ Ismingiz muvaffaqiyatli o'zgartirildi: ${text}`);
-            return showSubjectMenu(ctx);
-        }
-    }
-
-    // ==========================================
-    // 📝 3. RO'YXATDAN O'TISH (HIMOYA VA TAHRIR BILAN)
-    // ==========================================
+    
+    // Foydalanuvchi bazada yo'q bo'lsa (Restartdan keyin) yoki ro'yxatdan o'tmagan bo'lsa
     if (!user || !user.isRegistered) {
+        
+        // Yangi user yaratish (Restart bo'lgan bo'lsa ham shu yerga tushadi)
         if (!user) {
-            db.users[userId] = { id: userId, step: 'wait_name', isRegistered: false };
+            db.users[userId] = { 
+                id: userId, 
+                step: 'wait_name', 
+                isRegistered: false,
+                score: 0 // Ballarni nolga tushiramiz
+            };
             saveDb(db);
         }
+        
         const currentUser = db.users[userId];
 
-        // Ism saqlash (Ham yangi, ham tahrir vaqtidagi himoya)
+        // --- ISM KIRITISH BOSQICHI ---
         if (currentUser.step === 'wait_name') {
             const forbidden = ["📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", "💻 Dasturlash 1", "🧲 Fizika", "🇬🇧 Perfect English", "📊 Reyting", "👤 Profil", "⚙️ Sozlamalar"];
+            
+            // ISMNI TEKSHIRISH: Taqiqilangan tugma bosilsa yoki 3 ta harfdan kam bo'lsa
             if (forbidden.includes(text) || text.length < 3) {
-                return ctx.reply("❌ Xato! Iltimos, tugmani bosmang, ism-familiyangizni qo'lda yozing:");
+                return ctx.reply("❌ Ism va familiyangizni to'g'ri kiriting!\n⚠️ Shart: Kamida 3 ta harfdan iborat bo'lishi va tugma bo'lmasligi kerak.");
             }
+
             currentUser.name = text;
             currentUser.step = 'wait_univ';
             saveDb(db);
@@ -983,53 +1003,55 @@ bot.on('text', async (ctx, next) => {
                 Markup.keyboard([["1-kurs", "2-kurs"], ["3-kurs", "4-kurs"]]).oneTime().resize());
         }
 
-        // 1. Kurs saqlash (O'zgarishsiz qoladi, faqat Sun'iy intelekt tugmasi qo'shilgan)
-if (currentUser.step === 'wait_kurs') {
-    const kurslar = ["1-kurs", "2-kurs", "3-kurs", "4-kurs"];
-    if (!kurslar.includes(text)) return ctx.reply("⚠️ Kursni tugma orqali tanlang:");
-    
-    currentUser.kurs = text;
-    currentUser.step = 'wait_yonalish';
-    saveDb(db);
-    
-    let buttons = text === "1-kurs" 
-        ? [["Dasturiy Injiniring", "Kiberxavfsizlik"], ["Sun'iy intelekt"]] 
-        : [["Magistratura", "Boshqa"]];
+        // Kurs saqlash
+        if (currentUser.step === 'wait_kurs') {
+            const kurslar = ["1-kurs", "2-kurs", "3-kurs", "4-kurs"];
+            if (!kurslar.includes(text)) return ctx.reply("⚠️ Kursni tugma orqali tanlang:");
+            currentUser.kurs = text;
+            currentUser.step = 'wait_yonalish';
+            saveDb(db);
+            let buttons = text === "1-kurs" ? [["Dasturiy Injiniring", "Kiberxavfsizlik"], ["Sun'iy intelekt"]] : [["Magistratura", "Boshqa"]];
+            return ctx.reply(`Yo'nalishingizni tanlang:`, Markup.keyboard(buttons).oneTime().resize());
+        }
+
+        // Yo'nalish saqlash
+        if (currentUser.step === 'wait_yonalish') {
+            currentUser.yonalish = text;
+            currentUser.step = 'wait_semester';
+            saveDb(db);
+            return ctx.reply("Endi o'qiyotgan semestringizni tanlang:", Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
+        }
+
+        // Semestr saqlash va YAKUNLASH
+        if (currentUser.step === 'wait_semester') {
+            if (text === "2-semestr") {
+                return ctx.reply("❌ Hozircha faqat 1-semestr testlari mavjud. Iltimos, 1-semestrni tanlang.");
+            }
+            if (text === "1-semestr") {
+                currentUser.semester = text;
+                currentUser.isRegistered = true;
+                currentUser.step = 'completed';
+                saveDb(db);
+                await ctx.reply(`✅ Ma'lumotlar saqlandi! Xush kelibsiz.`);
+                return showSubjectMenu(ctx);
+            }
+            return ctx.reply("⚠️ Iltimos, semestrni tugma orqali tanlang:");
+        }
         
-    return ctx.reply(`Yo'nalishingizni tanlang:`, Markup.keyboard(buttons).oneTime().resize());
-}
-
-// 2. Yo'nalish saqlash va SEMESTR SO'RASH (O'zgartirilgan qismi)
-if (currentUser.step === 'wait_yonalish') {
-    currentUser.yonalish = text;
-    currentUser.step = 'wait_semester'; // Darhol tugatmaymiz, keyingi stepga o'tamiz
-    saveDb(db);
-    
-    return ctx.reply("Endi o'qiyotgan semestringizni tanlang:", 
-        Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
-}
-
-// 3. Semestrni tekshirish va Yakunlash (YANGI QO'SHILGAN QISMI)
-if (currentUser.step === 'wait_semester') {
-    if (text === "2-semestr") {
-        // Foydalanuvchini to'xtatib, faqat 1-semestrga yo'naltiramiz
-        return ctx.reply("❌ Hali 2-semestr darslari yakunlanmadi. Iltimos, hozircha faqat 1-semestr testlaridan foydalanib turing!", 
-            Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
+        // Ism kiritilmaguncha hamma narsani shu yerda to'xtatamiz
+        return ctx.reply("⚠️ Davom etish uchun avval ismingizni kiriting!");
     }
 
-    if (text === "1-semestr") {
-        currentUser.semester = text;
-        currentUser.isRegistered = true;
-        currentUser.step = 'completed'; // Endi ro'yxatdan o'tish tugadi
+    // ==========================================
+    // ⚙️ 3. SOZLAMALAR: TAHRIRLASH MANTIQI
+    // ==========================================
+    if (user.step === 'edit_name') {
+        if (text.length < 3) return ctx.reply("❌ Ism juda qisqa. Qaytadan kiriting:");
+        user.name = text;
+        user.step = 'completed';
         saveDb(db);
-        
-        await ctx.reply(`✅ Ma'lumotlar saqlandi! \nYo'nalish: ${currentUser.yonalish}\nSemestr: ${text}`);
+        await ctx.reply(`✅ Ismingiz muvaffaqiyatli o'zgartirildi: ${text}`);
         return showSubjectMenu(ctx);
-    }
-
-    return ctx.reply("⚠️ Iltimos, semestrni tugma orqali tanlang:");
-}
-        return ctx.reply("Iltimos, ro'yxatdan o'tishni yakunlang.");
     }
 
     return next();
