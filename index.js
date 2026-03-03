@@ -1869,10 +1869,10 @@ bot.hears(["⚡️ Blitz (25)", "📝 To'liq test"], async (ctx) => {
     sendQuestion(ctx, true);
 });
 bot.hears("📊 Reyting", async (ctx) => {
-    const db = getDb(); // Fayldan yangi ma'lumotlarni o'qish
+    const db = getDb(); 
     const users = Object.values(db.users);
 
-    // Ballar bo'yicha saralash va 0 balli odamlarni chiqarmaslik (ixtiyoriy)
+    // 1. Saralash va "undefined" ismlarni tozalash
     const sortedUsers = users
         .filter(u => u.score > 0) 
         .sort((a, b) => b.score - a.score)
@@ -1883,8 +1883,16 @@ bot.hears("📊 Reyting", async (ctx) => {
     }
 
     let report = "🏆 <b>TOP 10 REYTING</b>\n\n";
+    
     sortedUsers.forEach((user, index) => {
-        report += `${index + 1}. ${user.name} — <b>${user.score}</b> ball\n`;
+        // Ism undefined bo'lsa "Ismsiz foydalanuvchi" deb chiqaradi
+        // escapeHTML() funksiyasi ismlardagi < > belgilarini tozalaydi
+        let userName = user.name || "Noma'lum foydalanuvchi";
+        
+        // Agar ism baribir "undefined" degan yozuv bo'lib qolgan bo'lsa
+        if (userName === "undefined") userName = "Ismsiz foydalanuvchi";
+
+        report += `${index + 1}. <b>${userName}</b> — <b>${user.score}</b> ball\n`;
     });
 
     return ctx.replyWithHTML(report);
