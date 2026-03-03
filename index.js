@@ -1380,25 +1380,26 @@ bot.start(async (ctx) => {
     const userId = ctx.from.id;
     const user = db.users[userId];
 
-    // 1. Agar foydalanuvchi allaqachon ro'yxatdan o'tgan bo'lsa, uni menyuga yuboramiz
+    // 1. Agar foydalanuvchi allaqachon ro'yxatdan o'tgan bo'lsa
     if (user && user.isRegistered) {
         await ctx.reply(`Xush kelibsiz, ${user.name}! 😊`);
-        return showSubjectMenu(ctx); // Ma'lumotlarni o'chirmasdan menyuni ko'rsatamiz
+        return showSubjectMenu(ctx); 
     }
 
     // 2. Agar foydalanuvchi boshlagan bo'lsa-yu, oxirigacha yetmagan bo'lsa
     if (user && !user.isRegistered) {
         user.step = 'wait_name'; 
         saveDb(db);
-return ctx.replyWithHTML(
-    `✨ <b>Yaxshi boshlanish!</b>\n\n` +
-    `Profilingizni yakunlash uchun juda oz qoldi. Keling, tanishib olaylik:\n\n` +
-    `👤 <b>Ismingiz va familiyangizni yozib yuboring:</b>\n` +
-    `<i>(Masalan: Islom Karimov)</i>`,
-    Markup.keyboard([['🚫 Bekor qilish']]).resize() // Agar bekor qilish tugmasi kerak bo'lsa
-);    }
+        return ctx.replyWithHTML(
+            `✨ <b>Yaxshi boshlanish!</b>\n\n` +
+            `Profilingizni yakunlash uchun juda oz qoldi. Keling, tanishib olaylik:\n\n` +
+            `👤 <b>Ismingiz va familiyangizni yozib yuboring:</b>\n` +
+            `<i>(Masalan: Yusufbek Olimov)</i>`,
+            Markup.removeKeyboard() // Ism yozmaguncha pastdagi menyularni yashiradi
+        );
+    }
 
-    // 3. Agar mutlaqo yangi foydalanuvchi bo'lsa, birinchi marta yaratamiz
+    // 3. Agar mutlaqo yangi foydalanuvchi bo'lsa
     db.users[userId] = {
         id: userId,
         username: ctx.from.username || "Noma'lum",
@@ -1413,7 +1414,11 @@ return ctx.replyWithHTML(
     };
     saveDb(db);
 
-    return ctx.reply("👋 Assalomu alaykum! Botga xush kelibsiz.\n\nRo'yxatdan o'tish uchun ismingiz va familiyangizni kiriting:");
+    return ctx.replyWithHTML(
+        `👋 <b>Assalomu alaykum! Botga xush kelibsiz.</b>\n\n` +
+        `Davom etish uchun ismingiz va familiyangizni kiriting:`,
+        Markup.removeKeyboard() // Bu juda muhim: menyu buttonlari yo'qoladi
+    );
 });
 // --- CALLBACKLAR ---
 bot.action(/^ans_(\d+)$/, async (ctx) => {
