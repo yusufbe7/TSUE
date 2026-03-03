@@ -30,6 +30,7 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const QUESTIONS_FILE = path.join(DATA_DIR, 'custom_questions.json');
 const VIP_FILE = path.join(DATA_DIR, 'vip_users.json');
 const SESSION_FILE = path.join(DATA_DIR, 'session.json');
+const cron = require('node-cron');
 
 const SUBJECTS_FILE = path.join(__dirname, 'subjects.json');
 const adminStates = {}; // Admin holatlarini saqlash uchun
@@ -64,6 +65,53 @@ if (fs.existsSync(SETTINGS_FILE)) {
         botSettings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
     } catch (e) { console.error("Settings o'qishda xato"); }
 }
+
+
+
+
+
+
+cron.schedule('* * * * *', async () => {
+    const now = new Date();
+    const currentHour = String(now.getHours()).padStart(2, '0');
+    const currentMin = String(now.getMinutes()).padStart(2, '0');
+    const currentTime = `${currentHour}:${currentMin}`; // Masalan: "15:00"
+
+    const db = getDb();
+    const tour = db.tournament;
+
+    // Agar musobaqa faol bo'lsa va hozirgi vaqt belgilangan vaqtga teng bo'lsa
+    if (tour && tour.isActive && tour.time === currentTime) {
+        console.log("🚀 Musobaqa avtomatik boshlanmoqda...");
+
+        // Barcha ro'yxatdan o'tgan ishtirokchilarga xabar yuborish
+        for (const userId of tour.participants) {
+            try {
+                await bot.telegram.sendMessage(userId, 
+                    `🔔 <b>DIQQAT: MUSOBAQA BOSHLANDI!</b>\n\n` +
+                    `Soat aynan 15:00 bo'ldi. Omad tilaymiz!\n` +
+                    `Pastdagi tugmani bosing va testni boshlang:`, 
+                    { 
+                        parse_mode: 'HTML',
+                        ...Markup.inlineKeyboard([[Markup.button.callback("🏁 TESTNI BOSHLASH", "start_actual_tour")]])
+                    }
+                );
+            } catch (e) {
+                console.log(`${userId} botni bloklagan bo'lishi mumkin.`);
+            }
+        }
+    }
+});
+
+
+
+
+
+
+
+
+
+
 
 // 3. Sessiyani ulash
 bot.use((new LocalSession({ database: SESSION_FILE })).middleware());
@@ -195,48 +243,32 @@ function showSubjectMenu(ctx) {
     try {
         const db = getDb();
         const userId = ctx.from.id;
+        const tour = db.tournament; // Musobaqa ma'lumotlari
 
-        // 1. Bazada users obyekti borligini tekshirish
         if (!db || !db.users) {
-            return ctx.reply("❌ Malumotlar bazasi topilmadiku umuman. Iltimos, /start bosing.");
+            return ctx.reply("❌ Ma'lumotlar bazasi topilmadi. Iltimos, /start bosing.");
         }
 
         const user = db.users[userId];
-
-        // 2. Foydalanuvchi ro'yxatdan o'tganini tekshirish
         if (!user || !user.isRegistered) {
             return ctx.reply("⚠️ Iltimos, avval /start buyrug'ini bosing va ro'yxatdan o'ting.");
         }
 
         let keyboard = [];
-
-        // ==========================================
-        // 🎭 YO'NALISHLARGA QARAB TUGMALARNI SARALASH
-        // ==========================================
         const yonalish = user.yonalish;
 
+        // Yo'nalishga qarab fanlar (Sizning kodingiz)
         if (yonalish === "Dasturiy Injiniring") {
             keyboard = [
                 ["📝 Akademik yozuv", "📜 Tarix"],
                 ["➕ Matematika", "🧲 Fizika"],
                 ["💻 Dasturlash 1", "🇬🇧 Perfect English"]
             ];
-        } else if (yonalish === "Kiberxavfsizlik") {
+        } else if (yonalish === "Kiberxavfsizlik" || yonalish === "Sun'iy intelekt") {
             keyboard = [
                 ["🧲 Fizika", "📜 Tarix"],
                 ["📝 Akademik yozuv", "➕ Matematika"],
                 ["🇬🇧 Perfect English", "💻 Dasturlash 1"]
-            ];
-        } else if (yonalish === "Sun'iy intelekt") {
-            keyboard = [
-                ["🧲 Fizika", "📜 Tarix"],
-                ["📝 Akademik yozuv", "➕ Matematika"],
-                ["🇬🇧 Perfect English", "💻 Dasturlash 1"]
-            ];
-        } else if (yonalish === "Matematika") {
-            keyboard = [
-                ["➕ Matematika", "📐 Geometriya"],
-                ["📜 Tarix", "🇬🇧 Perfect English"]
             ];
         } else {
             keyboard = [
@@ -246,22 +278,41 @@ function showSubjectMenu(ctx) {
         }
 
         // ==========================================
-        // ⚙️ QO'SHIMCHA SOZLAMALAR
+        // 🏆 MUSOBAQA TUGMASINI DINAMIK TEKSHIRISH
         // ==========================================
+        if (tour && tour.isActive) {
+            // Jami davomiylikni hisoblaymiz (soniyadan millisoniyaga: count * 30 * 1000)
+            const totalDurationMs = tour.count * 30 * 1000;
+            const [hour, min] = tour.time.split(':').map(Number);
+            
+            // Bugungi sana bilan boshlanish vaqti
+            const startTime = new Date();
+            startTime.setHours(hour, min, 0, 0);
+            
+            // Tugash vaqti
+            const endTime = new Date(startTime.getTime() + totalDurationMs);
+            const currentTime = new Date();
+
+            // SHART: Vaqt o'tmagan bo'lsa VA user hali yechib tugatmagan bo'lsa
+            if (currentTime < endTime && !user.tourFinished) {
+                // Musobaqa tugmasini eng tepaga qo'shamiz
+                keyboard.unshift(["🏆 Xalqaro test musobaqa"]);
+            } else if (currentTime >= endTime && tour.isActive) {
+                // Agar vaqt o'tgan bo'lsa, musobaqani bazada passiv qilib qo'yamiz
+                db.tournament.isActive = false;
+                saveDb(db);
+            }
+        }
+
+        // Qolgan tizim menyulari
         if (db.settings?.turboMode) {
-            keyboard.unshift(["🚀 TURBO YODLASH (16:30)"]);
+            keyboard.push(["🚀 TURBO YODLASH"]);
         }
 
-        if (typeof tournament !== 'undefined' && tournament.isActive) {
-            keyboard.push(["🏆 Musobaqada qatnashish"]);
-        }
-
-        // Tizim menyusi
         keyboard.push(["📊 Reyting", "👤 Profil"]);
         keyboard.push(["⚙️ Sozlamalar"]);
 
         const welcomeText = `👤 <b>Foydalanuvchi:</b> ${user.name || "Talaba"}\n` +
-                            `🏛 <b>OTM:</b> ${user.univ || "Noma'lum"}\n` +
                             `🎓 <b>Yo'nalish:</b> ${yonalish}\n\n` +
                             `Fanni tanlang:`;
 
@@ -269,7 +320,7 @@ function showSubjectMenu(ctx) {
 
     } catch (error) {
         console.error("CRITICAL ERROR in showSubjectMenu:", error);
-        return ctx.reply("❌ Menyuni yuklashda xatolik yuz berdi. Qayta urinib ko'ring yoki /start bosing.");
+        return ctx.reply("❌ Menyuni yuklashda xatolik yuz berdi.");
     }
 }
 
@@ -421,6 +472,98 @@ async function sendQuestion(ctx, isNew = false) {
     }, currentTimeLimit * 1000);
 }
 
+async function sendTourQuestion(ctx, isNew = false) {
+    const s = ctx.session;
+    const userId = ctx.from.id;
+    const db = getDb();
+    const tour = db.tournament;
+
+    if (timers[userId]) clearTimeout(timers[userId]);
+
+    // ==========================================
+    // 1. TEST YAKUNLANISHI
+    // ==========================================
+    if (s.tourIndex >= tour.count) {
+        // Natijani saqlash (bu funksiyani alohida yozish kerak)
+        updateTourScore(userId, s.userName, s.tourScore); 
+        
+        return await ctx.replyWithHTML(
+            `🏁 <b>Musobaqa yakunlandi!</b>\n\n` +
+            `👤 Ishtirokchi: <b>${s.userName}</b>\n` +
+            `✅ To'g'ri javoblar: <b>${s.tourScore} ta</b>\n` +
+            `🏆 Natijangiz saqlandi. G'oliblarni kuting!`
+        );
+    }
+
+    // ==========================================
+    // 2. VAQT VA TAYMERNI HISOBLASH
+    // ==========================================
+    // Musobaqa boshlanganida umumiy tugash vaqtini bir marta hisoblab olamiz
+    if (!s.tourEndTime) {
+        const totalDurationMs = tour.count * 30 * 1000; // Masalan: 20 ta test * 30s = 600.000ms (10 daqiqa)
+        s.tourEndTime = Date.now() + totalDurationMs;
+    }
+
+    const remainingMs = s.tourEndTime - Date.now();
+    const remMin = Math.floor(remainingMs / 60000);
+    const remSec = Math.floor((remainingMs % 60000) / 1000);
+    
+    // Soat:Minut:Soniya ko'rinishida formatlash
+    const globalTimerStr = `${String(remMin).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+
+    const qData = tour.questions[s.tourIndex];
+    const safeQuestion = escapeHTML(qData.q);
+    const progress = getProgressBar(s.tourIndex + 1, tour.count);
+
+    // ==========================================
+    // 3. TEST KO'RINISHI
+    // ==========================================
+    const currentStepTime = 30; // Har bir savol uchun 30s
+    s.currentOptions = shuffle([...qData.options]);
+    const labels = ['A', 'B', 'C', 'D'];
+
+    let text = `🏆 <b>MUSOBAQA REJIMI</b>\n` +
+               `⏱ <b>Tugashiga: ${globalTimerStr} qoldi</b>\n` + // Jami vaqt
+               `📊 Progress: [${progress}]\n` +
+               `🔢 Savol: <b>${s.tourIndex + 1} / ${tour.count}</b>\n` +
+               `⌛️ Bu savol uchun: <b>${currentStepTime}s</b>\n` +
+               `_________________________\n\n` +
+               `❓ <b>${safeQuestion}</b>\n\n`;
+
+    s.currentOptions.forEach((opt, i) => { 
+        text += `<b>${labels[i]})</b> ${escapeHTML(opt)}\n\n`; 
+    });
+
+    const inlineButtons = Markup.inlineKeyboard([
+        s.currentOptions.map((_, i) => Markup.button.callback(labels[i], `tourans_${i}`)),
+        [Markup.button.callback("🛑 Chiqish", "stop_tour")]
+    ]);
+
+    // Xabarni yangilash (Eski xabarni tahrirlash orqali)
+    try {
+        if (isNew) {
+            const msg = await ctx.replyWithHTML(text, inlineButtons);
+            s.lastTourMsgId = msg.message_id; // Xabarni tahrirlash uchun ID ni saqlaymiz
+        } else {
+            await ctx.editMessageText(text, { parse_mode: 'HTML', ...inlineButtons });
+        }
+    } catch (e) {
+        const msg = await ctx.replyWithHTML(text, inlineButtons);
+        s.lastTourMsgId = msg.message_id;
+    }
+
+    // ==========================================
+    // 4. AVTOMATIK KEYINGI SAVOL (30 SONIYA)
+    // ==========================================
+    timers[userId] = setTimeout(async () => {
+        if (ctx.session && ctx.session.tourIndex === s.tourIndex) {
+            ctx.session.tourIndex++;
+            // Xato deb hisoblab keyingisiga o'tamiz
+            sendTourQuestion(ctx, false); 
+        }
+    }, currentStepTime * 1000);
+}
+
 async function checkSubscription(ctx) {
     try {
         // Kanal yuzernami yoki ID orqali tekshirish
@@ -465,6 +608,75 @@ async function showProfile(ctx) {
     return ctx.replyWithHTML(profileMsg);
 }
 
+function prepareTournamentQuestions(count) {
+    const subjects = JSON.parse(fs.readFileSync('./subjects.json', 'utf8'));
+    let allQuestions = [];
+
+    // Hamma fanlardagi savollarni bitta massivga yig'amiz
+    Object.keys(subjects).forEach(subKey => {
+        allQuestions = allQuestions.concat(subjects[subKey].questions);
+    });
+
+    // Massivni qorishtiramiz (Shuffle)
+    allQuestions.sort(() => Math.random() - 0.5);
+
+    // Admin aytgan miqdorda kesib olamiz
+    return allQuestions.slice(0, count);
+}
+
+async function finalizeTournament(ctx) {
+    const db = getDb();
+    const tour = db.tournament;
+
+    if (!tour || tour.participants.length === 0) {
+        return ctx.reply("❌ Musobaqa ishtirokchilari topilmadi.");
+    }
+
+    // 1. Ishtirokchilarni ballari bo'yicha saralash
+    // Ballari bir xil bo'lsa, kim kamroq vaqt sarflaganini ham hisobga olish mumkin (agar vaqtni saqlasangiz)
+    const leaderboard = tour.participants
+        .map(id => {
+            const u = db.users[id];
+            return { id: id, name: u.name, score: u.tourScore || 0 };
+        })
+        .sort((a, b) => b.score - a.score); // Kamayish tartibida
+
+    if (leaderboard.length === 0) return ctx.reply("Hali hech kim testni tugatmagan.");
+
+    // 2. Umumiy reyting xabarini tayyorlash
+    let rankingMsg = `🏆 <b>HAFTALIK MUSOBAQA NATIJALARI</b>\n`;
+    rankingMsg += `📅 Sana: ${tour.date}\n`;
+    rankingMsg += `_________________________\n\n`;
+
+    const medals = ["🥇", "🥈", "🥉"];
+    leaderboard.slice(0, 10).forEach((user, i) => {
+        const medal = medals[i] || `${i + 1}.`;
+        rankingMsg += `${medal} <b>${user.name}</b> — ${user.score} ball\n`;
+    });
+
+    // 3. G'olibga (1-o'rin) maxsus xabar yuborish
+    const winner = leaderboard[0];
+    if (winner && winner.score > 0) {
+        const winnerMsg = `🥳 <b>TABRIKLAYMIZ!</b>\n\n` +
+                          `Siz haftalik musobaqada <b>${winner.score} ball</b> bilan <b>1-o‘rinni</b> egalladingiz! 🏆\n\n` +
+                          `Bilimingiz va tezkorligingiz sizga g‘alaba keltirdi. Shunday davom eting! 💪✨`;
+        
+        try {
+            await ctx.telegram.sendMessage(winner.id, winnerMsg, { parse_mode: 'HTML' });
+        } catch (e) {
+            console.log("G'olibga xabar yuborib bo'lmadi.");
+        }
+    }
+
+    // 4. Barcha foydalanuvchilarga natijalarni e'lon qilish
+    // (Ixtiyoriy: hamma ko'rishi uchun guruhga yoki har bir userga yuborish mumkin)
+    await ctx.replyWithHTML(rankingMsg);
+
+    // 5. Musobaqani yakunlash (tugmani butunlay yo'q qilish)
+    db.tournament.isActive = false;
+    saveDb(db);
+}
+
 // BU FUNKSIYANI KODINGIZNING OXIRIGA QO'SHIB QO'YING
 function escapeHTML(str) {
     if (!str) return "";
@@ -499,9 +711,9 @@ bot.command('admin', (ctx) => {
         return ctx.reply(`🛠 **Admin Panel**`, 
             Markup.keyboard([
                 ['💰 Pullik versiya', '🆓 Bepul versiya'],
+                ['🏆 Haftalik musobaqa', '📢 Musobaqa natijalari'], // Natijalar tugmasi qo'shildi
                 [statusEmoji, '📊 Statistika'],
-                ['🏆 Musobaqa boshqarish', '🗑 Botni Restart qilish'], // Yangi tugma shu yerda
-                ['🗑 Foydalanuvchini o\'chirish', '🧹 Reytingni tozalash'],
+                ['🗑 Botni Restart qilish', '🧹 Reytingni tozalash'],
                 ['📣 Xabar tarqatish', '⬅️ Orqaga (Fanlar)']
             ]).resize());
     }
@@ -687,6 +899,125 @@ bot.action("cancel_restart", (ctx) => {
     return ctx.reply("Amal bekor qilindi.");
 });
 
+bot.action("confirm_tour", async (ctx) => {
+    // 1. Admin ekanligini tekshirish
+    if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery("Ruxsat yo'q!");
+    
+    try {
+        const db = getDb();
+        const s = ctx.session;
+
+        // 2. Eskidan qolib ketgan natijalarni hammaning profilidan tozalash
+        // Bu yangi musobaqada hamma nol ball bilan boshlashi va tugmani ko'rishi uchun shart
+        Object.keys(db.users).forEach(id => {
+            db.users[id].tourScore = 0;       // Musobaqa balini nolga tushirish
+            db.users[id].tourFinished = false; // "Tugatdi" degan belgi olib tashlanadi
+        });
+
+        // 3. Savollarni barcha fanlardan aralashtirib yig'ish
+        // prepareTournamentQuestions funksiyasi barcha fanlardan tasodifiy savollarni yig'adi
+        const tourQuestions = prepareTournamentQuestions(parseInt(s.tourCount));
+
+        // 4. Musobaqa ma'lumotlarini bazaga saqlash
+        db.tournament = {
+            isActive: true,
+            date: s.tourDate,
+            time: s.tourTime,
+            count: parseInt(s.tourCount),
+            participants: [], // Ro'yxatdan o'tganlar ro'yxati (IDlar)
+            questions: tourQuestions // Aralashgan savollar paketi
+        };
+
+        saveDb(db);
+
+        // 5. Admin xabarini yangilash
+        await ctx.editMessageText(
+            `✅ <b>Musobaqa muvaffaqiyatli yaratildi!</b>\n\n` +
+            `📅 Sana: ${s.tourDate}\n` +
+            `🕒 Vaqt: ${s.tourTime}\n` +
+            `📝 Savollar: ${s.tourCount} ta\n\n` +
+            `Barcha foydalanuvchilar menyusida "🏆 Xalqaro test musobaqa" tugmasi paydo bo'ldi.`,
+            { parse_mode: 'HTML' }
+        );
+
+        // Sessiyadagi admin vaqtinchalik ma'lumotlarini tozalaymiz
+        s.adminStep = null;
+
+    } catch (err) {
+        console.error("Musobaqa yaratishda xato:", err);
+        await ctx.reply("❌ Musobaqani saqlashda texnik xatolik yuz berdi.");
+    }
+});
+
+bot.action("join_tour", async (ctx) => {
+    const db = getDb();
+    const userId = ctx.from.id;
+    const tour = db.tournament;
+
+    // 1. Musobaqa hali faolmi?
+    if (!tour || !tour.isActive) {
+        return ctx.answerCbQuery("❌ Musobaqa allaqachon yakunlangan yoki faol emas.");
+    }
+
+    // 2. Foydalanuvchi allaqachon ro'yxatda bormi?
+    if (tour.participants.includes(userId)) {
+        return ctx.answerCbQuery("✅ Siz allaqachon ro'yxatdan o'tgansiz!");
+    }
+
+    // 3. Ro'yxatga qo'shish
+    db.tournament.participants.push(userId);
+    saveDb(db);
+
+    // 4. Tasdiqlash xabari
+    await ctx.editMessageText(
+        `🎉 <b>Tabriklaymiz!</b>\n\n` +
+        `Siz muvaffaqiyatli ro'yxatdan o'tdingiz. Musobaqa boshlanish vaqti: <b>${tour.time}</b>.\n\n` +
+        `🚀 Tayyor turing, musobaqa boshlanishi bilan sizga xabar yuboriladi!`,
+        { parse_mode: 'HTML' }
+    );
+});
+
+// "Rad etish" tugmasi uchun
+bot.action("cancel_join", async (ctx) => {
+    await ctx.editMessageText("❌ Musobaqada qatnashish rad etildi. Xohlagan vaqtingizda menyu orqali yana ro'yxatdan o'tishingiz mumkin.");
+});
+
+// Musobaqani rad etish actioni
+bot.action("reject_tour", async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return ctx.answerCbQuery("Ruxsat yo'q!");
+    ctx.session.adminStep = null;
+    await ctx.editMessageText("❌ Musobaqa yaratish bekor qilindi.");
+});
+
+bot.action(/tourans_(\d+)/, async (ctx) => {
+    const s = ctx.session;
+    const db = getDb();
+    const tour = db.tournament;
+    const choiceIdx = parseInt(ctx.match[1]); // Foydalanuvchi tanlagan variant indeksi
+
+    // Vaqt tugab qolmaganini tekshirish
+    if (Date.now() > s.tourEndTime) {
+        return ctx.answerCbQuery("❌ Musobaqa vaqti tugadi!", { show_alert: true });
+    }
+
+    const currentQuestion = tour.questions[s.tourIndex];
+    const userAnswer = s.currentOptions[choiceIdx];
+
+    // Javobni tekshirish
+    if (userAnswer === currentQuestion.a) {
+        s.tourScore++; // To'g'ri bo'lsa ball qo'shamiz
+        await ctx.answerCbQuery("✅ To'g'ri!");
+    } else {
+        await ctx.answerCbQuery("❌ Noto'g'ri!");
+    }
+
+    // Keyingi savolga o'tish
+    s.tourIndex++;
+    
+    // Keyingi savolni yuborish (false - editMessageText qiladi)
+    return sendTourQuestion(ctx, false);
+});
+
 bot.use(async (ctx, next) => {
     const db = getDb();
     const userId = ctx.from?.id;
@@ -826,6 +1157,22 @@ bot.hears('🏆 Musobaqa boshqarish', (ctx) => {
         
 });
 
+bot.hears('📢 Musobaqa natijalari', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    
+    return ctx.reply("Musobaqa natijalarini hisoblab, g'olibni tabriklashni tasdiqlaysizmi?", 
+        Markup.inlineKeyboard([
+            [Markup.button.callback("✅ Tasdiqlash va e'lon qilish", "announce_results")],
+            [Markup.button.callback("❌ Bekor qilish", "cancel_action")]
+        ]));
+});
+
+// Action qismi
+bot.action("announce_results", async (ctx) => {
+    await ctx.editMessageText("🔄 Natijalar hisoblanmoqda...");
+    await finalizeTournament(ctx);
+});
+
 // 2. Musobaqani yoqish mantiqi
 bot.hears('🟢 Yoqish', (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
@@ -932,6 +1279,56 @@ bot.hears("🗑 Foydalanuvchini o'chirish", (ctx) => {
     return ctx.reply("🗑 O'chirmoqchi bo'lgan foydalanuvchining ID raqamini kiriting:");
 });
 
+bot.hears("🏆 Xalqaro test musobaqa", async (ctx) => {
+    const db = getDb();
+    const tour = db.tournament;
+    const userId = ctx.from.id;
+
+    if (!tour || !tour.isActive) {
+        return ctx.reply("❌ Hozircha faol musobaqa yo'q. Admin tomonidan e'lon qilinishini kuting.");
+    }
+
+    // --- VAQTNI HISOBLASH MANTIQI ---
+    const totalSeconds = tour.count * 30; // Jami soniyalar (har bir test 30s)
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const remainingSeconds = totalSeconds % 60;
+
+    // Tugash vaqtini aniqlash (Boshlanish vaqti: 15:00 formatida bo'lsa)
+    const [startHour, startMin] = tour.time.split(':').map(Number);
+    let endMin = startMin + totalMinutes;
+    let endHour = startHour + Math.floor(endMin / 60);
+    endMin = endMin % 60;
+
+    // Vaqtni 00:00 formatiga keltirish
+    const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+    const durationStr = totalMinutes > 0 
+        ? `${totalMinutes} daqiqa ${remainingSeconds > 0 ? remainingSeconds + ' soniya' : ''}` 
+        : `${remainingSeconds} soniya`;
+
+    const isJoined = tour.participants.includes(userId);
+
+    const infoMsg = `🏆 <b>XALQARO TEST MUSOBAQA</b>\n\n` +
+                    `📅 <b>Sana:</b> ${tour.date}\n` +
+                    `🕒 <b>Boshlanish:</b> ${tour.time}\n` +
+                    `🏁 <b>Tugash (taxminan):</b> ${endTimeStr}\n` +
+                    `⏱ <b>Jami ajratilgan vaqt:</b> ${durationStr}\n` +
+                    `📝 <b>Testlar soni:</b> ${tour.count} ta\n` +
+                    `_________________________\n`;
+
+    if (isJoined) {
+        return ctx.replyWithHTML(
+            `${infoMsg}\n✅ <b>Siz muvaffaqiyatli ro'yxatdan o'tgansiz!</b>\n\n` +
+            `🚀 Musobaqa belgilangan vaqtda boshlanadi. Tayyor turing!`
+        );
+    }
+
+    const inviteMsg = `${infoMsg}\nMusobaqada qatnashishni tasdiqlaysizmi?`;
+
+    return ctx.replyWithHTML(inviteMsg, Markup.inlineKeyboard([
+        [Markup.button.callback("✅ Qo'shilish", "join_tour"), Markup.button.callback("❌ Rad etish", "cancel_join")]
+    ]));
+});
+
 
 // 1. Tugma bosilganda so'rash
 bot.hears("🧹 Reytingni tozalash", (ctx) => {
@@ -948,7 +1345,7 @@ bot.action("cancel_clear", (ctx) => ctx.deleteMessage());
 // 2. ID raqami yozilganda ishlaydigan logika
 bot.on('text', async (ctx, next) => {
     const s = ctx.session;
-    const db = getDb(); // Railway Volume (/data/ranking_db.json) dan o'qiydi
+    const db = getDb(); // Railway Volume (/data/ranking_db.json)
     const userId = ctx.from.id;
     const user = db.users[userId];
     const text = ctx.message.text.trim();
@@ -957,9 +1354,48 @@ bot.on('text', async (ctx, next) => {
     if (text.startsWith('/')) return next();
 
     // ==========================================
-    // 🛡 1. ADMIN QISMI (Xabar yuborish)
+    // 🛡 1. ADMIN QISMI
     // ==========================================
-    if (ctx.from.id === ADMIN_ID) {
+    if (userId === ADMIN_ID) {
+        
+        // --- 🏆 MUSOBAQA YARATISH BOSHLANISHI ---
+        if (text === "🏆 Haftalik musobaqa") {
+            s.adminStep = 'wait_tour_date';
+            return ctx.reply("📅 Musobaqa sanasini kiriting (masalan: 09.03.2026):", 
+                Markup.keyboard([['🚫 Bekor qilish']]).resize());
+        }
+
+        // --- MUSOBAQA STEP-BY-STEP ---
+        if (s.adminStep === 'wait_tour_date') {
+            if (text === '🚫 Bekor qilish') { s.adminStep = null; return ctx.reply("Bekor qilindi."); }
+            s.tourDate = text;
+            s.adminStep = 'wait_tour_time';
+            return ctx.reply("🕒 Musobaqa boshlanish soatini kiriting (masalan: 15:00):");
+        }
+
+        if (s.adminStep === 'wait_tour_time') {
+            s.tourTime = text;
+            s.adminStep = 'wait_tour_count';
+            return ctx.reply("📝 Jami testlar sonini kiriting (masalan: 50):");
+        }
+
+        if (s.adminStep === 'wait_tour_count') {
+            if (isNaN(text)) return ctx.reply("❌ Iltimos, faqat raqam kiriting:");
+            s.tourCount = text;
+            s.adminStep = null;
+
+            const msg = `🏆 <b>Yangi musobaqa tafsilotlari:</b>\n\n` +
+                        `📅 Sana: ${s.tourDate}\n` +
+                        `🕒 Vaqt: ${s.tourTime}\n` +
+                        `📝 Testlar: ${s.tourCount} ta\n\n` +
+                        `Tasdiqlaysizmi?`;
+
+            return ctx.replyWithHTML(msg, Markup.inlineKeyboard([
+                [Markup.button.callback("✅ Tasdiqlash", "confirm_tour"), Markup.button.callback("❌ Rad etish", "reject_tour")]
+            ]));
+        }
+
+        // --- XABAR TARQATISH (Mavjud kod) ---
         if (s.adminStep === 'wait_broadcast_text') {
             const users = Object.keys(db.users);
             let count = 0;
@@ -972,74 +1408,50 @@ bot.on('text', async (ctx, next) => {
     }
 
     // ==========================================
-    // 📝 2. RO'YXATDAN O'TISH (HIMOYA VA RESTARTDAN KEYINGI HOLAT)
+    // 📝 2. RO'YXATDAN O'TISH (HIMOYA)
     // ==========================================
-    
-    // Foydalanuvchi bazada yo'q bo'lsa (Restartdan keyin) yoki ro'yxatdan o'tmagan bo'lsa
     if (!user || !user.isRegistered) {
-        
-        // Yangi user yaratish (Restart bo'lgan bo'lsa ham shu yerga tushadi)
         if (!user) {
-            db.users[userId] = { 
-                id: userId, 
-                step: 'wait_name', 
-                isRegistered: false,
-                score: 0 // Ballarni nolga tushiramiz
-            };
+            db.users[userId] = { id: userId, step: 'wait_name', isRegistered: false, score: 0 };
             saveDb(db);
         }
         
         const currentUser = db.users[userId];
 
-        // --- ISM KIRITISH BOSQICHI ---
+        // --- ISM KIRITISH ---
         if (currentUser.step === 'wait_name') {
-    // 🛡 Barcha turdagi menyu tugmalari (Admin + Foydalanuvchi)
-    const forbidden = [
-        "📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", 
-        "💻 Dasturlash 1", "🧲 Fizika", "🇬🇧 Perfect English", 
-        "📊 Reyting", "👤 Profil", "⚙️ Sozlamalar",
-        "⬅️ Orqaga (Fanlar)", "📊 Statistika", "🗑 Botni Restart qilish",
-        "💰 Pullik versiya", "🆓 Bepul versiya", "🧹 Reytingni tozalash"
-    ];
-    
-    // 1. ISMNI TEKSHIRISH: Taqiqilangan tugma yoki juda qisqa matn
-    if (forbidden.includes(text) || text.length < 3) {
-        return ctx.reply(
-            "❌ Xato! Iltimos, menyu tugmalaridan foydalanmang.\n\n" +
-            "👤 Ism va familiyangizni matn ko'rinishida yozib yuboring (kamida 3 ta harf):", 
-            Markup.removeKeyboard() // Ekrandagi tugmalarni majburan yopamiz
-        );
-    }
+            const forbidden = [
+                "📝 Akademik yozuv", "📜 Tarix", "➕ Matematika", "💻 Dasturlash 1", 
+                "🧲 Fizika", "🇬🇧 Perfect English", "📊 Reyting", "👤 Profil", 
+                "⚙️ Sozlamalar", "⬅️ Orqaga (Fanlar)", "📊 Statistika", 
+                "🗑 Botni Restart qilish", "🏆 Haftalik musobaqa"
+            ];
+            
+            if (forbidden.includes(text) || text.length < 3) {
+                return ctx.reply("❌ Xato! Ism va familiyangizni to'g'ri kiriting (kamida 3 harf):", Markup.removeKeyboard());
+            }
 
-    // 2. To'g'ri bo'lsa, saqlaymiz
-    currentUser.name = text;
-    currentUser.step = 'wait_univ';
-    saveDb(db);
+            currentUser.name = text;
+            currentUser.step = 'wait_univ';
+            saveDb(db);
+            return ctx.reply(`Rahmat, ${text}!\n\nO'qish joyingizni tanlang:`, 
+                Markup.keyboard([["Alfraganus Universiteti", "Perfect Universiteti"], ["TATU", "TDPU"]]).oneTime().resize());
+        }
 
-    return ctx.reply(
-        `✅ Rahmat, ${text}!\n\nEndi o'qish joyingizni tanlang:`, 
-        Markup.keyboard([
-            ["Alfraganus Universiteti", "Perfect Universiteti"], 
-            ["TATU", "TDPU"]
-        ]).oneTime().resize()
-    );
-}
-
-        // Universitet saqlash
+        // --- UNIV SAQLASH ---
         if (currentUser.step === 'wait_univ') {
             const univs = ["Alfraganus Universiteti", "Perfect Universiteti", "TATU", "TDPU"];
-            if (!univs.includes(text)) return ctx.reply("⚠️ Universitetni tugma orqali tanlang:");
+            if (!univs.includes(text)) return ctx.reply("⚠️ Universitetni tanlang:");
             currentUser.univ = text;
             currentUser.step = 'wait_kurs';
             saveDb(db);
-            return ctx.reply("Nechanchi kursda o'qiysiz?", 
-                Markup.keyboard([["1-kurs", "2-kurs"], ["3-kurs", "4-kurs"]]).oneTime().resize());
+            return ctx.reply("Nechanchi kurs?", Markup.keyboard([["1-kurs", "2-kurs"], ["3-kurs", "4-kurs"]]).oneTime().resize());
         }
 
-        // Kurs saqlash
+        // --- KURS SAQLASH ---
         if (currentUser.step === 'wait_kurs') {
             const kurslar = ["1-kurs", "2-kurs", "3-kurs", "4-kurs"];
-            if (!kurslar.includes(text)) return ctx.reply("⚠️ Kursni tugma orqali tanlang:");
+            if (!kurslar.includes(text)) return ctx.reply("⚠️ Kursni tanlang:");
             currentUser.kurs = text;
             currentUser.step = 'wait_yonalish';
             saveDb(db);
@@ -1047,43 +1459,39 @@ bot.on('text', async (ctx, next) => {
             return ctx.reply(`Yo'nalishingizni tanlang:`, Markup.keyboard(buttons).oneTime().resize());
         }
 
-        // Yo'nalish saqlash
+        // --- YO'NALISH SAQLASH ---
         if (currentUser.step === 'wait_yonalish') {
             currentUser.yonalish = text;
             currentUser.step = 'wait_semester';
             saveDb(db);
-            return ctx.reply("Endi o'qiyotgan semestringizni tanlang:", Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
+            return ctx.reply("Semestrni tanlang:", Markup.keyboard([["1-semestr", "2-semestr"]]).oneTime().resize());
         }
 
-        // Semestr saqlash va YAKUNLASH
+        // --- SEMESTR VA YAKUNLASH ---
         if (currentUser.step === 'wait_semester') {
-            if (text === "2-semestr") {
-                return ctx.reply("❌ Hozircha faqat 1-semestr testlari mavjud. Iltimos, 1-semestrni tanlang.");
-            }
+            if (text === "2-semestr") return ctx.reply("❌ Hozircha faqat 1-semestr mavjud.");
             if (text === "1-semestr") {
                 currentUser.semester = text;
                 currentUser.isRegistered = true;
                 currentUser.step = 'completed';
                 saveDb(db);
-                await ctx.reply(`✅ Ma'lumotlar saqlandi! Xush kelibsiz.`);
+                await ctx.reply(`✅ Ma'lumotlar saqlandi!`);
                 return showSubjectMenu(ctx);
             }
-            return ctx.reply("⚠️ Iltimos, semestrni tugma orqali tanlang:");
+            return ctx.reply("⚠️ Semestrni tanlang:");
         }
-        
-        // Ism kiritilmaguncha hamma narsani shu yerda to'xtatamiz
-        return ctx.reply("⚠️ Davom etish uchun avval ismingizni kiriting!");
+        return ctx.reply("⚠️ Davom etish uchun ismingizni kiriting!");
     }
 
     // ==========================================
-    // ⚙️ 3. SOZLAMALAR: TAHRIRLASH MANTIQI
+    // ⚙️ 3. SOZLAMALAR: TAHRIRLASH
     // ==========================================
     if (user.step === 'edit_name') {
-        if (text.length < 3) return ctx.reply("❌ Ism juda qisqa. Qaytadan kiriting:");
+        if (text.length < 3) return ctx.reply("❌ Ism juda qisqa.");
         user.name = text;
         user.step = 'completed';
         saveDb(db);
-        await ctx.reply(`✅ Ismingiz muvaffaqiyatli o'zgartirildi: ${text}`);
+        await ctx.reply(`✅ O'zgartirildi: ${text}`);
         return showSubjectMenu(ctx);
     }
 
@@ -1225,50 +1633,6 @@ bot.on(['text', 'photo', 'video', 'animation', 'document'], async (ctx, next) =>
 });
 
 
-// bot.on('text', async (ctx, next) => {
-//     const s = ctx.session;
-//     const db = getDb();
-//     const userId = ctx.from.id;
-//     const user = db.users[userId];
-
-//     // 1. AGAR BOT ISM KUTAYOTGAN BO'LSA VA FOYDALANUVCHI ISM YOZSA
-//     if (s.waitingForName) {
-//         const inputName = ctx.message.text.trim();
-        
-//         if (inputName.length < 3) {
-//             return ctx.reply("Ism juda qisqa. Iltimos, ismingizni kiriting:");
-//         }
-
-//         // Bazada foydalanuvchi bormi?
-//         if (db.users[userId]) {
-//             db.users[userId].name = inputName; // Faqat ismni yangilaymiz
-//         } else {
-//             db.users[userId] = { 
-//                 id: userId, 
-//                 name: inputName, 
-//                 score: 0, 
-//                 isVip: false 
-//             };
-//         }
-
-//         saveDb(db); // Faylga saqlaymiz
-//         s.waitingForName = false; // Ism kutishni to'xtatamiz
-//         s.userName = inputName;
-
-//         await ctx.reply(`Rahmat, ${inputName}! Endi testlarni yechishingiz mumkin. ✅`);
-//         return showSubjectMenu(ctx);
-//     }
-
-//     // 2. MUHIM QISMI: AGAR FOYDALANUVCHI ISMI BAZADA BO'LSA, UNGA TUGMALARNI ISHLATISHGA RUXSAT BERISH
-//     if (user && user.name) {
-//         s.waitingForName = false; // Xavfsizlik uchun sessiyani ham to'g'irlab qo'yamiz
-//         return next(); // Keyingi tugma buyruqlariga o'tkazib yuboramiz
-//     }
-
-//     // 3. AGAR ISMI YO'Q BO'LSA, FAQAT SHUNDA ISM SO'RAYMIZ
-//     s.waitingForName = true;
-//     return ctx.reply("Davom etish uchun avval ismingizni kiriting:");
-// });
 
 
 
