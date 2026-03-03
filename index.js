@@ -1386,38 +1386,33 @@ bot.start(async (ctx) => {
         return showSubjectMenu(ctx); 
     }
 
-    // 2. Agar foydalanuvchi boshlagan bo'lsa-yu, oxirigacha yetmagan bo'lsa
-    if (user && !user.isRegistered) {
-        user.step = 'wait_name'; 
-        saveDb(db);
-        return ctx.replyWithHTML(
-            `✨ <b>Yaxshi boshlanish!</b>\n\n` +
-            `Profilingizni yakunlash uchun juda oz qoldi. Keling, tanishib olaylik:\n\n` +
-            `👤 <b>Ismingiz va familiyangizni yozib yuboring:</b>\n` +
-            `<i>(Masalan: Yusufbek Olimov)</i>`,
-            Markup.removeKeyboard() // Ism yozmaguncha pastdagi menyularni yashiradi
-        );
+    // 2. Agar foydalanuvchi ism kiritib bo'lgan bo'lsa (Lekin hali to'liq tugatmagan)
+    if (user && user.step !== 'wait_name') {
+        // Ism yozib bo'lingan, shunchaki keyingi qadamni eslatamiz
+        return ctx.reply(`Siz ism kiritib bo'lgansiz: ${user.name} ✅\n\nIltimos, ro'yxatdan o'tishni davom ettiring (OTM, Kurs yoki Yo'nalishni tanlang).`);
     }
 
-    // 3. Agar mutlaqo yangi foydalanuvchi bo'lsa
-    db.users[userId] = {
-        id: userId,
-        username: ctx.from.username || "Noma'lum",
-        name: "",
-        univ: "",
-        kurs: "",
-        yonalish: "",
-        score: 0, 
-        totalTests: 0,
-        step: 'wait_name',
-        isRegistered: false
-    };
-    saveDb(db);
+    // 3. Agar mutlaqo yangi bo'lsa yoki ism kiritmagan bo'lsa
+    if (!user) {
+        db.users[userId] = {
+            id: userId,
+            username: ctx.from.username || "Noma'lum",
+            name: "",
+            univ: "",
+            kurs: "",
+            yonalish: "",
+            score: 0, 
+            totalTests: 0,
+            step: 'wait_name',
+            isRegistered: false
+        };
+        saveDb(db);
+    }
 
     return ctx.replyWithHTML(
-        `👋 <b>Assalomu alaykum! Botga xush kelibsiz.</b>\n\n` +
-        `Davom etish uchun ismingiz va familiyangizni kiriting:`,
-        Markup.removeKeyboard() // Bu juda muhim: menyu buttonlari yo'qoladi
+        `✨ <b>Assalomu alaykum! Botga xush kelibsiz.</b>\n\n` +
+        `Ro'yxatdan o'tish uchun ismingiz va familiyangizni kiriting:`,
+        Markup.removeKeyboard()
     );
 });
 // --- CALLBACKLAR ---
