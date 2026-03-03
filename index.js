@@ -480,17 +480,16 @@ async function sendTourQuestion(ctx, isNew = false) {
     const db = getDb();
     const tour = db.tournament;
 
-    // Taymerni tozalash
     if (timers[userId]) clearTimeout(timers[userId]);
 
     // ==========================================
-    // 1. TEST YAKUNLANISHI
+    // 🏁 1. TEST YAKUNLANISHI
     // ==========================================
     if (s.tourIndex >= tour.count) {
-        // Natijani bazaga saqlash
+        // Ma'lumotlarni bazaga saqlash
         if (db.users[userId]) {
             db.users[userId].tourScore = s.tourScore;
-            db.users[userId].tourFinished = true; // Keyingi safar kirmasligi uchun
+            db.users[userId].tourFinished = true; // Bu showSubjectMenu'da tugmani o'chiradi
             saveDb(db);
         }
         
@@ -499,18 +498,20 @@ async function sendTourQuestion(ctx, isNew = false) {
                           `✅ To'g'ri javoblar: <b>${s.tourScore} ta</b>\n\n` +
                           `🏆 Natijangiz saqlandi. Admin natijalarni e'lon qilishini kuting!`;
 
-        try {
-            // Testni tahrirlab natijani chiqaramiz
-            return await ctx.editMessageText(resultMsg, { parse_mode: 'HTML' });
-        } catch (e) {
-            // Agar tahrirlash imkoni bo'lmasa (masalan rasm bo'lsa), yangi xabar yuboramiz
-            return await ctx.replyWithHTML(resultMsg);
-        }
+        // 🛡 1. Avvalgi test savolini o'chirish (toza bo'lishi uchun)
+        try { await ctx.deleteMessage(); } catch (e) {}
+
+        // 🛡 2. Natijani yangi xabar sifatida yuboramiz
+        await ctx.replyWithHTML(resultMsg);
+        
+        // 🛡 3. MENYUNI YANGILASH (Bu yerda tugma avtomatik yo'qoladi)
+        return showSubjectMenu(ctx); 
     }
 
     // ==========================================
     // 2. VAQT VA TAYMERNI HISOBLASH
     // ==========================================
+    // ... (Qolgan kodingiz o'zgarishsiz qoladi)
     if (!s.tourEndTime) {
         const totalDurationMs = tour.count * 30 * 1000;
         s.tourEndTime = Date.now() + totalDurationMs;
@@ -521,7 +522,6 @@ async function sendTourQuestion(ctx, isNew = false) {
     const remSec = Math.max(0, Math.floor((remainingMs % 60000) / 1000));
     const globalTimerStr = `${String(remMin).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
 
-    // Savol ma'lumotlarini olish
     const qData = tour.questions[s.tourIndex];
     if (!qData) {
         s.tourIndex++;
@@ -555,7 +555,6 @@ async function sendTourQuestion(ctx, isNew = false) {
         [Markup.button.callback("🛑 Chiqish", "stop_tour")]
     ]);
 
-    // Xabarni tahrirlash yoki yangi yuborish
     try {
         if (isNew) {
             await ctx.replyWithHTML(text, inlineButtons);
@@ -566,11 +565,7 @@ async function sendTourQuestion(ctx, isNew = false) {
         await ctx.replyWithHTML(text, inlineButtons);
     }
 
-    // ==========================================
-    // 4. AVTOMATIK KEYINGI SAVOL (30 SONIYA)
-    // ==========================================
     timers[userId] = setTimeout(async () => {
-        // Faqat foydalanuvchi hali ham shu savolda bo'lsagina keyingisiga o'tkazamiz
         if (ctx.session && ctx.session.tourIndex === s.tourIndex) {
             ctx.session.tourIndex++;
             sendTourQuestion(ctx, false); 
