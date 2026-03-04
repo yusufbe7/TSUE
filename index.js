@@ -1,9 +1,11 @@
 const { Telegraf, Markup } = require('telegraf');
 const LocalSession = require('telegraf-session-local'); //Qisqa muddatli xotirasi Telegram botlar tabiatan "esda tutmas" (stateless) bo'ladi. Ya'ni, bot foydalanuvchi hozirgina nima deganini darrov unutadi.
 const fs = require('fs');
-const path = require('path');
 const XLSX = require('xlsx');
 const http = require('http');
+const express = require('express');
+const app = express();
+const path = require('path');
 
 
 
@@ -36,6 +38,53 @@ const SUBJECTS_FILE = path.join(__dirname, 'subjects.json');
 const adminStates = {}; // Admin holatlarini saqlash uchun
 // 2. Bazalarni tekshirish va funksiyalar
 if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ users: {} }));
+
+
+
+app.use(express.static('public')); 
+app.use(express.json());
+
+// API: Web App bazadagi musobaqani shu yerdan oladi
+app.get('/api/tournament', (ctx_api, res) => {
+    const db = getDb();
+    res.json(db.tournament || { isActive: false });
+});
+
+
+
+const PORT = process.env.PORT || 3000;
+
+http.createServer((req, res) => {
+    // 1. API: Web App musobaqa ma'lumotlarini so'raganda
+    if (req.url === '/api/tournament') {
+        const db = getDb();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(db.tournament || { isActive: false }));
+    }
+
+    // 2. WEB APP: Asosiy sahifani (index.html) ko'rsatish
+    if (req.url === '/' || req.url === '/index.html') {
+        const filePath = path.join(__dirname, 'public', 'index.html');
+        fs.readFile(filePath, (err, data) => {
+            if (err) {
+                res.writeHead(404);
+                return res.end("HTML fayl topilmadi. 'public' papkasini tekshiring.");
+            }
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(data);
+        });
+        return;
+    }
+
+    // 3. Qolgan barcha holatlarda (Railway uchun "Bot is running")
+    res.writeHead(200);
+    res.end('Bot is running...');
+
+}).listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server ${PORT}-portda ishlamoqda...`);
+});
+
+
 
 function getDb() {
     try {
@@ -1898,6 +1947,40 @@ bot.on(['text', 'photo', 'video', 'animation', 'document'], async (ctx, next) =>
     return next();
 });
 
+bot.on('web_app_data', async (ctx) => {
+    const data = ctx.webAppData.data; // Ba'zi Telegraf versiyalarida .data() funksiya emas
+    
+    if (data === "reject_tournament_action") {
+        const db = getDb();
+        
+        // 1. Musobaqani bazada tozalash
+        db.tournament.isActive = false;
+        db.tournament.date = null;
+        db.tournament.time = null;
+        db.tournament.participants = []; // Ishtirokchilarni ham tozalaymiz
+        saveDb(db);
+
+        // 2. Adminga tasdiq yuborish
+        await ctx.reply("❌ Musobaqa Web App orqali bekor qilindi. Barcha ma'lumotlar o'chirildi.");
+
+        // 3. Foydalanuvchilar menyusini yangilash (Tugmani olib tashlash)
+        const userIds = Object.keys(db.users);
+        for (const id of userIds) {
+            try {
+                // Ularga shunchaki asosiy menyuni qaytadan yuboramiz
+                await ctx.telegram.sendMessage(id, "📢 E'lon: Rejalashtirilgan musobaqa bekor qilindi.", {
+                    ...Markup.keyboard([
+                        ['📝 Akademik yozuv', '📜 Tarix'],
+                        ['➕ Matematika', '📊 Reyting'],
+                        ['👤 Profilim']
+                    ]).resize()
+                });
+            } catch (e) {
+                console.log(`${id} ga xabar yuborib bo'lmadi.`);
+            }
+        }
+    }
+});
 
 
 
@@ -2197,13 +2280,13 @@ bot.action(/^reject_(\d+)$/, async (ctx) => {
     return ctx.editMessageCaption("❌ To'lov rad etildi.");
 });
 
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end('Bot is running...');
-}).listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is listening on port ${PORT}`);
-});
+// const PORT = process.env.PORT || 3000;
+// http.createServer((req, res) => {
+//     res.writeHead(200);
+//     res.end('Bot is running...');
+// }).listen(PORT, '0.0.0.0', () => {
+//     console.log(`Server is listening on port ${PORT}`);
+// });
 
 bot.catch((err, ctx) => {
     const errorCode = err.response?.error_code;

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <title>Admin Panel</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f9; display: flex; justify-content: center; padding: 20px; }
+        .container { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .login-btn { background: #0088cc; color: white; }
+        .reject-btn { background: #e74c3c; color: white; margin-top: 20px; }
+        .info-card { border: 1px solid #ddd; padding: 15px; border-radius: 10px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="login-screen">
+            <h3>🔒 Admin Kirish</h3>
+            <input type="password" id="pass-input" placeholder="Parolni kiriting...">
+            <button class="login-btn" onclick="checkPass()">Kirish</button>
+        </div>
+
+        <div id="admin-panel" style="display:none;">
+            <h3>🏆 Faol Musobaqa</h3>
+            <div id="tour-data" class="info-card">
+                <p>Yuklanmoqda...</p>
+            </div>
+            <button id="reject-button" class="reject-btn" style="display:none;" onclick="confirmReject()">Rad etish</button>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // WebAppni to'liq ekranga yoyish
+
+        const SECRET_PASS = "AD4863403";
+
+        function checkPass() {
+            const val = document.getElementById('pass-input').value;
+            if(val === SECRET_PASS) {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('admin-panel').style.display = 'block';
+                fetchTournament(); // Bazadan ma'lumotni o'qish
+            } else {
+                alert("Parol noto'g'ri!");
+            }
+        }
+
+        async function fetchTournament() {
+            try {
+                // API orqali bazadagi oxirgi saqlangan ma'lumotni oladi
+                const response = await fetch('/api/tournament');
+                const tour = await response.json();
+                const container = document.getElementById('tour-data');
+                const btn = document.getElementById('reject-button');
+
+                if (tour && tour.isActive) {
+                    container.innerHTML = `
+                        <p>📅 <b>Sana:</b> ${tour.date}</p>
+                        <p>🕒 <b>Vaqt:</b> ${tour.time}</p>
+                        <p>📝 <b>Savollar:</b> ${tour.count} ta</p>
+                    `;
+                    btn.style.display = 'block';
+                } else {
+                    container.innerHTML = "<p>❌ Hozircha rejalashtirilgan musobaqa yo'q.</p>";
+                    btn.style.display = 'none';
+                }
+            } catch (e) {
+                console.error("Xatolik:", e);
+            }
+        }
+
+        function confirmReject() {
+            if (confirm("Rostan ham ushbu musobaqani bekor qilmoqchimisiz?")) {
+                // Botga xabar yuboradi
+                tg.sendData("reject_tournament_action");
+                tg.close();
+            }
+        }
+    </script>
+</body>
+</html>
