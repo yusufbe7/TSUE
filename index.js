@@ -55,64 +55,48 @@ app.get('/api/tournament', (ctx_api, res) => {
 const PORT = process.env.PORT || 3000;
 
 http.createServer(async (req, res) => {
-    const db = getDb();
-
-    // 1. API: Barcha musobaqalarni yuborish
+    // 1. API: Musobaqa ma'lumotlarini olish
     if (req.url === '/api/tournament' && req.method === 'GET') {
+        const db = getDb();
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        // Endi massivni yuboramiz (agar bo'sh bo'lsa [])
-        return res.end(JSON.stringify(db.tournaments || []));
+        return res.end(JSON.stringify(db.tournament || { isActive: false }));
     }
 
-    // 🔥 2. API: Tanlangan musobaqani ID orqali o'chirish
+    // 🔥 2. API: Musobaqani rad etish (Web App'dan keladi)
     if (req.url === '/api/reject' && req.method === 'POST') {
-        let body = '';
-        req.on('data', chunk => { body += chunk.toString(); });
+        const db = getDb();
         
-        req.on('end', async () => {
+        // Bazani tozalash
+        db.tournament.isActive = false;
+        db.tournament.date = null;
+        db.tournament.time = null;
+        db.tournament.participants = [];
+        saveDb(db);
+
+        // Hamma userlarga xabar yuborish va menyusini tozalash
+        const userIds = Object.keys(db.users);
+        
+        // Bu jarayon biroz vaqt olishi mumkin, shuning uchun for-of ishlatamiz
+        for (const id of userIds) {
             try {
-                const { id } = JSON.parse(body); // Web App dan kelgan ID
-
-                if (db.tournaments) {
-                    // O'chirilishi kerak bo'lgan musobaqani topamiz (xabar yuborish uchun)
-                    const tourToCancel = db.tournaments.find(t => String(t.id) === String(id));
-                    
-                    if (tourToCancel) {
-                        // 1. Massivdan o'chiramiz
-                        db.tournaments = db.tournaments.filter(t => String(t.id) !== String(id));
-                        saveDb(db);
-
-                        // 2. Foydalanuvchilarga xabar tarqatamiz
-                        const userIds = Object.keys(db.users);
-                        const cancelMsg = `🚫 <b>E'lon:</b>\n${tourToCancel.date} kungi soat ${tourToCancel.time} dagi musobaqa bekor qilindi.`;
-
-                        // Xabarlarni guruhlab yuborish (Oldingi darsdagi xavfsiz usul)
-                        for (const userId of userIds) {
-                            try {
-                                await bot.telegram.sendMessage(userId, cancelMsg, {
-                                    parse_mode: 'HTML',
-                                    ...Markup.keyboard([
-                                        ['📝 Akademik yozuv', '📜 Tarix'],
-                                        ['➕ Matematika', '📊 Reyting'],
-                                        ['👤 Profilim']
-                                    ]).resize()
-                                });
-                            } catch (e) { /* bloklagan userlar uchun */ }
-                        }
-                    }
-                }
-
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: true }));
-            } catch (err) {
-                res.writeHead(400);
-                res.end(JSON.stringify({ success: false, error: "Xato ma'lumot" }));
+                await bot.telegram.sendMessage(id, "🚫 <b>E'lon:</b> Rejalashtirilgan musobaqa bekor qilindi.", {
+                    parse_mode: 'HTML',
+                    ...Markup.keyboard([
+                        ['📝 Akademik yozuv', '📜 Tarix'],
+                        ['➕ Matematika', '📊 Reyting'],
+                        ['👤 Profilim']
+                    ]).resize()
+                });
+            } catch (e) {
+                console.log(`User ${id} botni bloklagan, xabar bormadi.`);
             }
-        });
-        return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true }));
     }
 
-    // 3. WEB APP: Sahifani ko'rsatish
+    // 3. WEB APP: index.html faylini ko'rsatish
     if (req.url === '/' || req.url === '/index.html') {
         const filePath = path.join(__dirname, 'public', 'index.html');
         fs.readFile(filePath, (err, data) => {
@@ -126,8 +110,10 @@ http.createServer(async (req, res) => {
         return;
     }
 
+    // 4. Default javob
     res.writeHead(200);
     res.end('Bot is running...');
+
 }).listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server ${PORT}-portda ishlamoqda...`);
 });

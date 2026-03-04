@@ -236,79 +236,36 @@ strong {
         }
     }
 
- async function fetchTournament() {
-    try {
-        const response = await fetch('/api/tournament');
-        const tours = await response.json(); // Endi bu yerda ro'yxat (massiv) keladi
-        const container = document.getElementById('tour-data');
-        const btn = document.getElementById('reject-button');
-
-        // Agar ma'lumot kelgan bo'lsa va u bo'sh bo'lmasa
-        if (Array.isArray(tours) && tours.length > 0) {
-            container.innerHTML = ""; // Oldingi yozuvlarni tozalaymiz
-            
-            tours.forEach((tour, index) => {
-                // Har bir musobaqa uchun alohida blok qo'shamiz
-                container.innerHTML += `
-                    <div class="info-card" style="margin-bottom: 20px; border-left: 4px solid #8f51ea;">
-                        <p>🏆 <b>Musobaqa #${index + 1}</b></p>
-                        <p>📅 <b>Sana:</b> ${tour.date}</p>
-                        <p>🕒 <b>Vaqt:</b> ${tour.time}</p>
-                        <p>📝 <b>Savollar:</b> ${tour.count} ta</p>
-                        <button type="button" class="btn reject-btn" onclick="confirmReject('${tour.id}')" style="height: 2.5rem; margin-top: 10px;">
-                            <strong>BEKOR QILISH</strong>
-                        </button>
-                    </div>
-                `;
-            });
-            
-            // Asosiy rad etish tugmasini yashirib turamiz, chunki har bir kartada o'ziniki bor
-            btn.style.display = 'none'; 
-        } else if (tours && tours.isActive) { 
-            // Agar bazangiz hali massiv emas, bitta obyekt bo'lsa (eski holat)
-            container.innerHTML = `
-                <div class="info-card">
-                    <p>📅 <b>Sana:</b> ${tours.date}</p>
-                    <p>🕒 <b>Vaqt:</b> ${tours.time}</p>
-                    <p>📝 <b>Savollar:</b> ${tours.count} ta</p>
-                </div>
-            `;
-            btn.style.display = 'flex';
-        } else {
-            container.innerHTML = "<p>❌ Hozircha rejalashtirilgan musobaqalar yo'q.</p>";
-            btn.style.display = 'none';
-        }
-    } catch (e) {
-        console.error("Xatolik:", e);
-        container.innerHTML = "<p>⚠️ Ma'lumotlarni yuklashda xatolik.</p>";
-    }
-}
-
- async function confirmReject() {
-    // 1. Foydalanuvchidan tasdiqlash so'raymiz
-    if (confirm("Rostan ham ushbu musobaqani bekor qilmoqchimisiz?")) {
+    async function fetchTournament() {
         try {
-            // 2. Botning serveriga POST so'rovi yuboramiz
-            const response = await fetch('/api/reject', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
+            const response = await fetch('/api/tournament');
+            const tour = await response.json();
+            const container = document.getElementById('tour-data');
+            const btn = document.getElementById('reject-button');
 
-            // 3. Javobni tekshiramiz
-            if (response.ok) {
-                alert("✅ Musobaqa muvaffaqiyatli bekor qilindi!");
-                tg.close(); // Web App oynasini yopish
+            if (tour && tour.isActive) {
+                container.innerHTML = `
+                    <p>📅 <b>Sana:</b> ${tour.date}</p>
+                    <p>🕒 <b>Vaqt:</b> ${tour.time}</p>
+                    <p>📝 <b>Savollar:</b> ${tour.count} ta</p>
+                `;
+                // Space button stilida bo'lsa, 'flex' qilish ma'qulroq
+                btn.style.display = 'flex'; 
             } else {
-                alert("❌ Xatolik yuz berdi. Server javob bermadi.");
+                container.innerHTML = "<p>❌ Hozircha rejalashtirilgan musobaqa yo'q.</p>";
+                btn.style.display = 'none';
             }
-        } catch (error) {
-            console.error("Xatolik:", error);
-            alert("⚠️ Tarmoq xatosi! Server bilan bog'lanib bo'lmadi.");
+        } catch (e) {
+            console.error("Xatolik:", e);
         }
     }
-}
+
+    function confirmReject() {
+        if (confirm("Rostan ham ushbu musobaqani bekor qilmoqchimisiz?")) {
+            tg.sendData("reject_tournament_action");
+            tg.close();
+        }
+    }
 </script>
 </body>
 </html>
