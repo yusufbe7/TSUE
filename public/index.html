@@ -175,194 +175,38 @@ strong {
 @keyframes animStarRotate { from { transform: rotate(360deg); } to { transform: rotate(0); } }
 @keyframes gradient_301 { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
 @keyframes pulse_3011 { 0% { transform: scale(0.75); } 70% { transform: scale(1); } 100% { transform: scale(0.75); } }
-
-.admin-entry-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #94a3b8;
-    padding: 5px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 12px;
-}
-
-.back-btn {
-    background: transparent;
-    border: none;
-    color: #94a3b8;
-    margin-top: 20px;
-    cursor: pointer;
-    text-decoration: underline;
-}
-
-.input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
     </style>
 </head>
 <body>
-   <div class="grid-bg"></div>
-
-<div class="container">
-    <div id="header-actions" style="text-align: right; margin-bottom: 10px;">
-        <button class="admin-entry-btn" onclick="showSection('login-screen')">⚙️ Admin</button>
-    </div>
-
-    <div id="welcome-screen" class="section">
-        <h3>👋 Xush kelibsiz</h3>
-        <p>Tizimga kiring yoki ro'yxatdan o'ting</p>
+    <div class="container">
+    <div id="login-screen">
+        <h3>🔒 Admin Kirish</h3>
+        <input type="password" id="pass-input" placeholder="Parolni kiriting...">
         
-        <div class="input-group">
-            <input type="text" id="signin-name" placeholder="Ismingiz" class="input">
-            <input type="password" id="signin-pass" placeholder="Parol" class="input">
-        </div>
-
-        <button type="button" class="btn" onclick="handleSignIn()">
+        <button type="button" class="btn login-btn" onclick="checkPass()">
             <strong>KIRISH</strong>
             <div id="container-stars"><div id="stars"></div></div>
-            <div id="glow-btn"><div class="circle"></div><div class="circle"></div></div>
+            <div id="glow"><div class="circle"></div><div class="circle"></div></div>
         </button>
-        
-        <p style="margin-top:15px">Hisobingiz yo'qmi? <a href="#" onclick="showSection('signup-screen')" style="color:#8f51ea">Ro'yxatdan o'ting</a></p>
     </div>
 
-    <div id="signup-screen" class="section" style="display:none;">
-        <h3>📝 Ro'yxatdan o'tish</h3>
-        <div class="input-group">
-            <input type="text" id="signup-name" placeholder="Ismingiz" class="input">
-            <input type="password" id="signup-pass1" placeholder="Parol yarating" class="input">
-            <input type="password" id="signup-pass2" placeholder="Parolni tasdiqlang" class="input">
+    <div id="admin-panel" style="display:none;">
+        <h3>🏆 Faol Musobaqa</h3>
+        <div id="tour-data" class="info-card">
+            <p>Yuklanmoqda...</p>
         </div>
-
-        <button type="button" class="btn" onclick="handleSignUp()">
-            <strong>RO'YXATDAN O'TISH</strong>
+        
+        <button type="button" id="reject-button" class="btn reject-btn" style="display:none;" onclick="confirmReject()">
+            <strong>RAD ETISH</strong>
             <div id="container-stars"><div id="stars"></div></div>
-            <div id="glow-btn"><div class="circle"></div><div class="circle"></div></div>
+            <div id="glow"><div class="circle"></div><div class="circle"></div></div>
         </button>
-        
-        <button class="back-btn" onclick="showSection('welcome-screen')">⬅️ Orqaga</button>
     </div>
-
-    <div id="login-screen" class="section" style="display:none;">
-        <h3>🔒 Admin Panelga Kirish</h3>
-        <input type="password" id="pass-input" placeholder="Admin paroli..." class="input">
-        
-        <button type="button" class="btn" onclick="checkPass()">
-            <strong>ADMIN KIRISH</strong>
-            <div id="container-stars"><div id="stars"></div></div>
-            <div id="glow-btn"><div class="circle"></div><div class="circle"></div></div>
-        </button>
-        <button class="back-btn" onclick="showSection('welcome-screen')">⬅️ Asosiy sahifa</button>
-    </div>
-
-    <div id="user-dashboard" class="section" style="display:none;">
-        <h3>👤 Mening Profilim</h3>
-        <div class="info-card">
-            <p>Salom, <span id="user-display-name"></span>!</p>
-            <p>Sizning natijalaringiz tez orada shu yerda bo'ladi.</p>
-        </div>
-        <button class="back-btn" onclick="logout()">Chiqish</button>
-    </div>
-
-    <div id="admin-panel" class="section" style="display:none;">
-        </div>
 </div>
+
     <script>
     const tg = window.Telegram.WebApp;
     tg.expand();
-
-
-
-
-
-
-
-
-// 1. Sahifa yuklanganda auto-loginni tekshirish
-    window.onload = () => {
-        const savedUser = localStorage.getItem('loggedUser');
-        if (savedUser) {
-            const user = JSON.parse(savedUser);
-            showDashboard(user.name);
-        }
-    };
-
-    // Bo'limlar o'rtasida almashish
-    function showSection(id) {
-        document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
-        document.getElementById(id).style.display = 'block';
-        
-        // Admin tugmasini faqat welcome screen bo'lganda ko'rsatamiz
-        document.getElementById('header-actions').style.display = (id === 'welcome-screen') ? 'block' : 'none';
-    }
-
-    // Ro'yxatdan o'tish
-    async function handleSignUp() {
-        const name = document.getElementById('signup-name').value;
-        const p1 = document.getElementById('signup-pass1').value;
-        const p2 = document.getElementById('signup-pass2').value;
-
-        if(!name || !p1) return alert("Hamma joyni to'ldiring!");
-        if(p1 !== p2) return alert("Parollar mos kelmadi!");
-
-        // Bot API-ga yuborish (Siz index.js-da /api/signup ochishingiz kerak)
-        const response = await fetch('/api/signup', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name, password: p1, telegramId: tg.initDataUnsafe?.user?.id })
-        });
-
-        if(response.ok) {
-            alert("Ro'yxatdan o'tdingiz! Endi kiring.");
-            showSection('welcome-screen');
-        }
-    }
-
-    // Kirish
-    async function handleSignIn() {
-        const name = document.getElementById('signin-name').value;
-        const pass = document.getElementById('signin-pass').value;
-
-        // API tekshiruvi (index.js-da /api/signin ochiladi)
-        const response = await fetch('/api/signin', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name, password: pass })
-        });
-
-        if(response.ok) {
-            const data = await response.json();
-            localStorage.setItem('loggedUser', JSON.stringify({ name: name }));
-            showDashboard(name);
-        } else {
-            alert("Ism yoki parol xato!");
-        }
-    }
-
-    function showDashboard(name) {
-        document.getElementById('user-display-name').innerText = name;
-        showSection('user-dashboard');
-    }
-
-    function logout() {
-        localStorage.removeItem('loggedUser');
-        showSection('welcome-screen');
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     const SECRET_PASS = "AD4863403";
     const inputField = document.getElementById('pass-input');
