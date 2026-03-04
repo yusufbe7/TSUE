@@ -260,12 +260,31 @@ strong {
         }
     }
 
-    function confirmReject() {
-        if (confirm("Rostan ham ushbu musobaqani bekor qilmoqchimisiz?")) {
-            tg.sendData("reject_tournament_action");
-            tg.close();
+   async function confirmReject() {
+    // 1. Tasdiqlash oynasini chiqaramiz
+    if (confirm("Rostan ham ushbu musobaqani bekor qilmoqchimisiz?")) {
+        try {
+            // 2. Bot serveriga "o'chirish" buyrug'ini yuboramiz
+            const response = await fetch('/api/reject', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            // 3. Javobni tekshiramiz
+            if (response.ok) {
+                alert("✅ Musobaqa muvaffaqiyatli bekor qilindi!");
+                tg.close(); // Web App oynasini yopish
+            } else {
+                alert("❌ Xatolik! Server buyruqni qabul qilmadi.");
+            }
+        } catch (error) {
+            console.error("Xatolik:", error);
+            alert("⚠️ Tarmoq xatosi! Server bilan bog'lanishda muammo yuz berdi.");
         }
     }
+}
 </script>
 </body>
 </html>

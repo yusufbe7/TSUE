@@ -55,28 +55,30 @@ app.get('/api/tournament', (ctx_api, res) => {
 const PORT = process.env.PORT || 3000;
 
 http.createServer(async (req, res) => {
-    // 1. API: Musobaqa ma'lumotlarini olish
+    const db = getDb(); // Bazani o'qish funksiyangiz
+
+    // 1. API: Musobaqa ma'lumotlarini Web App-ga yuborish
     if (req.url === '/api/tournament' && req.method === 'GET') {
-        const db = getDb();
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        // Agar musobaqa bo'lsa uni, bo'lmasa isActive: false yuboradi
         return res.end(JSON.stringify(db.tournament || { isActive: false }));
     }
 
-    // 🔥 2. API: Musobaqani rad etish (Web App'dan keladi)
+    // 🔥 2. API: Musobaqani o'chirish (Rad etish)
     if (req.url === '/api/reject' && req.method === 'POST') {
-        const db = getDb();
-        
-        // Bazani tozalash
-        db.tournament.isActive = false;
-        db.tournament.date = null;
-        db.tournament.time = null;
-        db.tournament.participants = [];
+        // Bazani darhol tozalaymiz
+        db.tournament = { 
+            isActive: false, 
+            date: null, 
+            time: null, 
+            participants: [] 
+        };
         saveDb(db);
 
-        // Hamma userlarga xabar yuborish va menyusini tozalash
-        const userIds = Object.keys(db.users);
+        // Hamma foydalanuvchilarga xabar va yangi menyuni yuborish
+        const userIds = Object.keys(db.users || {});
         
-        // Bu jarayon biroz vaqt olishi mumkin, shuning uchun for-of ishlatamiz
+        // Asinxron loop foydalanuvchilar ko'p bo'lsa bot qotib qolmasligi uchun
         for (const id of userIds) {
             try {
                 await bot.telegram.sendMessage(id, "🚫 <b>E'lon:</b> Rejalashtirilgan musobaqa bekor qilindi.", {
@@ -88,7 +90,7 @@ http.createServer(async (req, res) => {
                     ]).resize()
                 });
             } catch (e) {
-                console.log(`User ${id} botni bloklagan, xabar bormadi.`);
+                console.log(`User ${id} botni bloklagan.`);
             }
         }
 
@@ -110,10 +112,9 @@ http.createServer(async (req, res) => {
         return;
     }
 
-    // 4. Default javob
+    // Default javob
     res.writeHead(200);
     res.end('Bot is running...');
-
 }).listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server ${PORT}-portda ishlamoqda...`);
 });
