@@ -2,289 +2,856 @@
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <title>Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <title>Panel</title>
     <style>
-        /* Umumiy sahifa ko'rinishi */
-body { 
-    font-family: sans-serif; 
-    background: #0f172a; 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; /* Markazda turishi uchun */
-    min-height: 100dvh; /* Dynamic viewport height telefonlar uchun muhim */
-    margin: 0;
-    padding: 10px;
-    box-sizing: border-box;
-}
-.container { 
-    background: #1e293b; 
-    padding: 30px; 
-    border-radius: 20px; 
-    box-shadow: 0 10px 25px rgba(0,0,0,0.3); 
-    width: 100%; 
-    max-width: 400px; 
-    color: white;
-    text-align: center;
-    /* Klaviatura ochilganda elementlar siqilmasligi uchun */
-    position: relative;
-    z-index: 1;
-}
-h3 {
-    margin-bottom: 10px;
-    font-size: 20px;
-    background: linear-gradient(to right, #fff, #94a3b8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
+        :root {
+            --bg:        #060910;
+            --surface:   #0d1117;
+            --card:      #111827;
+            --border:    #1f2937;
+            --accent:    #6366f1;
+            --accent2:   #8b5cf6;
+            --danger:    #ef4444;
+            --success:   #10b981;
+            --text:      #f1f5f9;
+            --muted:     #64748b;
+            --input-bg:  #0a0e18;
+        }
 
-/* input { 
-    width: 90%; 
-    padding: 12px; 
-    margin: 20px 0; 
-    border: 1px solid #334155; 
-    border-radius: 10px; 
-    background: #0f172a;
-    color: white;
-} */
-#pass-input { 
-    width: 90%; 
-    padding: 14px; 
-    margin: 25px 0; 
-    border: 2px solid #1e293b; 
-    border-radius: 12px; 
-    background: #070b14; /* To'q qora fon */
-    color: #ffffff;
-    font-size: 16px;
-    outline: none;
-    transition: all 0.4s ease;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
-    letter-spacing: 2px; /* Parol nuqtalari chiroyli turishi uchun */
-}
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* Inputga bosilganda (Focus) yonish effekti */
-#pass-input:focus {
-    border-color: #8f51ea; /* Binafsha chegara */
-    box-shadow: 0 0 15px rgba(143, 81, 234, 0.5), 
-                inset 0 0 5px rgba(143, 81, 234, 0.2);
-    background: #0f172a;
-    transform: translateY(-2px); /* Kichik ko'tarilish effekti */
-}
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            min-height: 100dvh;
+            color: var(--text);
+            overflow-x: hidden;
+        }
 
-/* Placeholder (ichidagi yozuv) rangi */
-#pass-input::placeholder {
-    color: #64748b;
-    letter-spacing: normal;
-    font-size: 14px;
-}
+        /* ── NOISE TEXTURE ── */
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 999;
+        }
 
-.info-card { 
-    border: 1px solid #334155; 
-    padding: 15px; 
-    border-radius: 10px; 
-    margin-top: 15px; 
-    background: #0f172a;
-}
+        /* ── AMBIENT GLOW ── */
+        .glow-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .orb1 { width: 300px; height: 300px; background: rgba(99,102,241,0.12); top: -50px; left: -80px; }
+        .orb2 { width: 200px; height: 200px; background: rgba(139,92,246,0.08); bottom: 50px; right: -50px; }
 
-/* --- SPACE BUTTON ASOSIY STILI --- */
-.btn {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%; /* Konteynerga moslashish uchun */
-    overflow: hidden;
-    height: 3.5rem;
-    background-size: 300% 300%;
-    cursor: pointer;
-    backdrop-filter: blur(1rem);
-    border-radius: 5rem;
-    transition: 0.5s;
-    animation: gradient_301 5s ease infinite;
-    border: double 4px transparent;
-    background-image: linear-gradient(#212121, #212121),
-      linear-gradient(137.48deg, #ffdb3b 10%, #fe53bb 45%, #8f51ea 67%, #0044ff 87%);
-    background-origin: border-box;
-    background-clip: content-box, border-box;
-    position: relative;
-    margin-top: 10px;
-}
+        /* ── TOP BAR ── */
+        .topbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 52px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 20px;
+            background: rgba(6,9,16,0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+        }
+        .topbar-logo {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 15px;
+            letter-spacing: 0.05em;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .admin-btn {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .admin-btn:hover { color: var(--text); border-color: var(--accent); }
 
-/* Rad etish tugmasi uchun qizilroq rang effekti */
-.reject-btn {
-    background-image: linear-gradient(#212121, #212121),
-      linear-gradient(137.48deg, #ff5f6d 10%, #ffc371 45%, #e74c3c 67%, #ff5f6d 87%);
-}
+        /* ── MAIN WRAPPER ── */
+        .main {
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 72px 16px 24px;
+            position: relative;
+            z-index: 1;
+        }
 
-#container-stars {
-    position: absolute;
-    z-index: -1;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    transition: 0.5s;
-    backdrop-filter: blur(1rem);
-    border-radius: 5rem;
-}
+        /* ── AUTH CARD ── */
+        .auth-card {
+            width: 100%;
+            max-width: 380px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px 28px;
+            position: relative;
+            overflow: hidden;
+        }
+        .auth-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        }
 
-strong {
-    z-index: 2;
-    font-family: sans-serif;
-    font-size: 14px;
-    letter-spacing: 3px;
-    color: #ffffff;
-    text-shadow: 0 0 4px white;
-}
+        .auth-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .auth-sub {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
 
-#glow {
-    position: absolute;
-    display: flex;
-    width: 12rem;
-}
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--surface);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 24px;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.25s;
+            color: var(--muted);
+            user-select: none;
+        }
+        .tab.active {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(99,102,241,0.35);
+        }
 
-.circle {
-    width: 100%;
-    height: 30px;
-    filter: blur(2rem);
-    animation: pulse_3011 4s infinite;
-    z-index: -1;
-}
+        /* Form */
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--muted);
+            margin-bottom: 7px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .form-input {
+            width: 100%;
+            padding: 13px 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.25s;
+        }
+        .form-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+        }
+        .form-input::placeholder { color: #374151; }
+        .form-input.error { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
 
-.circle:nth-of-type(1) { background: rgba(254, 83, 186, 0.636); }
-.circle:nth-of-type(2) { background: rgba(142, 81, 234, 0.704); }
+        /* Xato xabar */
+        .err-msg {
+            font-size: 12px;
+            color: var(--danger);
+            margin-top: 5px;
+            display: none;
+        }
+        .err-msg.show { display: block; }
 
-/* Rad etish tugmasi nurlari */
-.reject-btn .circle:nth-of-type(1) { background: rgba(231, 76, 60, 0.636); }
-.reject-btn .circle:nth-of-type(2) { background: rgba(255, 95, 109, 0.704); }
+        /* Submit tugma */
+        .submit-btn {
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Syne', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.25s;
+            margin-top: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+        .submit-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(99,102,241,0.35); }
+        .submit-btn:active { transform: translateY(0); }
+        .submit-btn.loading { opacity: 0.7; pointer-events: none; }
+        .submit-btn.loading::after {
+            content: '';
+            position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+            width: 14px; height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
 
-.btn:hover #container-stars { z-index: 1; background-color: #212121; }
-.btn:hover { transform: scale(1.05); }
-.btn:active { border: double 4px #fe53bb; animation: none; }
+        /* ── DASHBOARD ── */
+        #dashboard { display: none; }
+        .dash-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+        .dash-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        }
 
-/* Animatsiyalar (Siz yuborgan koddagidek qoladi) */
-#stars { position: relative; background: transparent; width: 200rem; height: 200rem; }
-#stars::after, #stars::before {
-    content: ""; position: absolute; width: 100%; height: 100%;
-    background-image: radial-gradient(#ffffff 1px, transparent 1%);
-    background-size: 50px 50px;
-}
-#stars::after { animation: animStarRotate 90s linear infinite; top: -10rem; left: -100rem; }
-#stars::before { animation: animStar 60s linear infinite; opacity: 0.5; }
+        .user-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        .avatar {
+            width: 52px; height: 52px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Syne', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .user-name {
+            font-family: 'Syne', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .user-role {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
 
-@keyframes animStar { from { transform: translateY(0); } to { transform: translateY(-135rem); } }
-@keyframes animStarRotate { from { transform: rotate(360deg); } to { transform: rotate(0); } }
-@keyframes gradient_301 { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-@keyframes pulse_3011 { 0% { transform: scale(0.75); } 70% { transform: scale(1); } 100% { transform: scale(0.75); } }
+        /* Stats grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .stat-item {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+        }
+        .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .stat-value { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
+        .stat-value.green { color: var(--success); }
+        .stat-value.red { color: var(--danger); }
+        .stat-value.purple { color: var(--accent); }
+
+        /* Tournament card */
+        .tour-info { }
+        .tour-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .badge {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+        }
+        .badge.active { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+        .badge.inactive { background: rgba(100,116,139,0.15); color: var(--muted); border: 1px solid var(--border); }
+
+        .tour-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .tour-row:last-child { border-bottom: none; }
+        .tour-row span:first-child { color: var(--muted); }
+        .tour-row span:last-child { font-weight: 500; }
+
+        /* Danger button */
+        .danger-btn {
+            width: 100%;
+            padding: 13px;
+            background: rgba(239,68,68,0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 10px;
+            font-family: 'Syne', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.25s;
+            margin-top: 4px;
+        }
+        .danger-btn:hover { background: rgba(239,68,68,0.2); border-color: var(--danger); }
+
+        /* Logout */
+        .logout-link {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 12px;
+            color: var(--muted);
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .logout-link:hover { color: var(--text); }
+
+        /* ── ADMIN MODAL ── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            width: 100%; max-width: 360px;
+            position: relative;
+        }
+        .modal::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, #ef4444, transparent);
+        }
+        .modal-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+        .modal-close {
+            position: absolute; top: 16px; right: 16px;
+            width: 28px; height: 28px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--muted);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .modal-close:hover { color: var(--text); }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 20px;
+            font-size: 13px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 500;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .toast.success { border-color: rgba(16,185,129,0.4); color: var(--success); }
+        .toast.error { border-color: rgba(239,68,68,0.4); color: var(--danger); }
+
+        @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
+
+        .divider { height: 1px; background: var(--border); margin: 16px 0; }
     </style>
 </head>
 <body>
-    <div class="container">
-    <div id="login-screen">
-        <h3>🔒 Admin Kirish</h3>
-        <input type="password" id="pass-input" placeholder="Parolni kiriting...">
-        
-        <button type="button" class="btn login-btn" onclick="checkPass()">
-            <strong>KIRISH</strong>
-            <div id="container-stars"><div id="stars"></div></div>
-            <div id="glow"><div class="circle"></div><div class="circle"></div></div>
-        </button>
+    <div class="glow-orb orb1"></div>
+    <div class="glow-orb orb2"></div>
+
+    <!-- TOP BAR -->
+    <header class="topbar">
+        <div class="topbar-logo">⚡ STUDENT BOT</div>
+        <button class="admin-btn" onclick="openAdminModal()">Admin</button>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+
+        <!-- AUTH CARD -->
+        <div class="auth-card" id="auth-section">
+            <div class="tabs">
+                <div class="tab active" id="tab-signup" onclick="switchTab('signup')">Ro'yxatdan o'tish</div>
+                <div class="tab" id="tab-signin" onclick="switchTab('signin')">Kirish</div>
+            </div>
+
+            <!-- SIGN UP -->
+            <div id="signup-form">
+                <p class="auth-title">Xush kelibsiz 👋</p>
+                <p class="auth-sub">Akkaunt yarating va o'z profilingizga kiring.</p>
+
+                <div class="form-group">
+                    <label class="form-label">Ism</label>
+                    <input class="form-input" id="su-name" type="text" placeholder="Ism Familiya" autocomplete="off">
+                    <div class="err-msg" id="su-name-err">Ism kamida 3 ta harf bo'lishi kerak</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Parol</label>
+                    <input class="form-input" id="su-pass" type="password" placeholder="Parol kiriting">
+                    <div class="err-msg" id="su-pass-err">Parol kamida 6 ta belgi</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Parolni tasdiqlash</label>
+                    <input class="form-input" id="su-pass2" type="password" placeholder="Parolni takrorlang">
+                    <div class="err-msg" id="su-pass2-err">Parollar mos kelmadi</div>
+                </div>
+                <button class="submit-btn" onclick="doSignUp()">Ro'yxatdan o'tish</button>
+            </div>
+
+            <!-- SIGN IN -->
+            <div id="signin-form" style="display:none;">
+                <p class="auth-title">Qaytib keldingiz 🔐</p>
+                <p class="auth-sub">Akkauntingizga kiring.</p>
+
+                <div class="form-group">
+                    <label class="form-label">Ism</label>
+                    <input class="form-input" id="si-name" type="text" placeholder="Ism Familiya" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Parol</label>
+                    <input class="form-input" id="si-pass" type="password" placeholder="Parol">
+                </div>
+                <div class="err-msg" id="si-err" style="margin-bottom:8px;">Ism yoki parol noto'g'ri</div>
+                <button class="submit-btn" onclick="doSignIn()">Kirish</button>
+            </div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div id="dashboard" style="display:none; width:100%; max-width:380px;">
+            <div class="dash-card">
+                <div class="user-header">
+                    <div class="avatar" id="dash-avatar">A</div>
+                    <div>
+                        <div class="user-name" id="dash-name">—</div>
+                        <div class="user-role">Foydalanuvchi</div>
+                    </div>
+                </div>
+
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">Jami ball</div>
+                        <div class="stat-value purple" id="stat-score">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Testlar</div>
+                        <div class="stat-value" id="stat-tests">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">OTM</div>
+                        <div class="stat-value" style="font-size:13px;" id="stat-univ">—</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Kurs</div>
+                        <div class="stat-value" id="stat-kurs">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MUSOBAQA CARD -->
+            <div class="dash-card">
+                <div class="tour-title">
+                    🏆 Musobaqa
+                    <span class="badge inactive" id="tour-badge">Yuklanmoqda</span>
+                </div>
+                <div id="tour-info">
+                    <div class="tour-row"><span>Holat</span><span id="ti-status">—</span></div>
+                    <div class="tour-row"><span>Sana</span><span id="ti-date">—</span></div>
+                    <div class="tour-row"><span>Vaqt</span><span id="ti-time">—</span></div>
+                    <div class="tour-row"><span>Savollar</span><span id="ti-count">—</span></div>
+                </div>
+                <button class="danger-btn" id="reject-btn" style="display:none;" onclick="confirmReject()">
+                    ✕ Musobaqani bekor qilish
+                </button>
+            </div>
+
+            <div class="logout-link" onclick="doLogout()">← Chiqish</div>
+        </div>
+    </main>
+
+    <!-- ADMIN MODAL -->
+    <div class="modal-overlay" id="admin-modal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeAdminModal()">✕</button>
+            <div class="modal-title">🔐 Admin Kirish</div>
+            <div class="modal-sub">Admin parolini kiriting.</div>
+            <div class="form-group">
+                <input class="form-input" id="admin-pass" type="password" placeholder="Admin parol" onkeydown="if(event.key==='Enter')checkAdmin()">
+            </div>
+            <div class="err-msg show" id="admin-err" style="display:none!important; margin-bottom:8px;"></div>
+            <button class="submit-btn" onclick="checkAdmin()">Kirish</button>
+        </div>
     </div>
 
-    <div id="admin-panel" style="display:none;">
-        <h3>🏆 Faol Musobaqalar</h3>
-        <div id="tour-data" class="info-card">
-            <p>Yuklanmoqda....</p>
-        </div>
-        
-        <button type="button" id="reject-button" class="btn reject-btn" style="display:none;" onclick="confirmReject()">
-            <strong>RAD ETISH</strong>
-            <div id="container-stars"><div id="stars"></div></div>
-            <div id="glow"><div class="circle"></div><div class="circle"></div></div>
-        </button>
-    </div>
-</div>
+    <!-- TOAST -->
+    <div class="toast" id="toast"></div>
 
     <script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
+    // ════════════════════════════════════════
+    // TELEGRAM WEB APP
+    // ════════════════════════════════════════
+    const tg = window.Telegram?.WebApp;
+    if (tg) tg.expand();
 
-    const SECRET_PASS = "AD4863403";
-    const inputField = document.getElementById('pass-input');
+    // ════════════════════════════════════════
+    // SOZLAMALAR
+    // ════════════════════════════════════════
+    const ADMIN_SECRET = "AD4863403";
+    const STORAGE_KEY  = "aitex_user";   // localStorage kaliti
 
-    // --- KLAVIATURA BILAN ISHLASH QISMI ---
-    inputField.addEventListener('focus', () => {
-        // Klaviatura chiqishi uchun 300ms kutib, keyin o'rtaga suradi
-        setTimeout(() => {
-            inputField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
-    });
+    // ════════════════════════════════════════
+    // TOAST
+    // ════════════════════════════════════════
+    function showToast(msg, type = 'success') {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = `toast ${type} show`;
+        setTimeout(() => { t.className = 'toast'; }, 3000);
+    }
 
-    inputField.addEventListener('blur', () => {
-        // Klaviatura yopilganda sahifani joyiga qaytaradi
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    // --------------------------------------
+    // ════════════════════════════════════════
+    // TAB SWITCH
+    // ════════════════════════════════════════
+    function switchTab(tab) {
+        const isSignup = tab === 'signup';
+        document.getElementById('signup-form').style.display = isSignup ? 'block' : 'none';
+        document.getElementById('signin-form').style.display = isSignup ? 'none' : 'block';
+        document.getElementById('tab-signup').className = 'tab' + (isSignup ? ' active' : '');
+        document.getElementById('tab-signin').className = 'tab' + (!isSignup ? ' active' : '');
+        clearErrors();
+    }
 
-    function checkPass() {
-        const val = inputField.value; // yuqoridagi o'zgaruvchidan foydalanamiz
-        if(val === SECRET_PASS) {
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('admin-panel').style.display = 'block';
-            fetchTournament();
-        } else {
-            alert("Parol noto'g'ri!");
+    function clearErrors() {
+        document.querySelectorAll('.err-msg').forEach(e => e.classList.remove('show'));
+        document.querySelectorAll('.form-input').forEach(i => i.classList.remove('error'));
+    }
+
+    function showErr(id, inputId) {
+        const e = document.getElementById(id);
+        if (e) e.classList.add('show');
+        if (inputId) {
+            const inp = document.getElementById(inputId);
+            if (inp) inp.classList.add('error');
         }
+    }
+
+    // ════════════════════════════════════════
+    // SIGN UP
+    // ════════════════════════════════════════
+    function doSignUp() {
+        clearErrors();
+        const name  = document.getElementById('su-name').value.trim();
+        const pass  = document.getElementById('su-pass').value;
+        const pass2 = document.getElementById('su-pass2').value;
+        let ok = true;
+
+        if (name.length < 3) { showErr('su-name-err', 'su-name'); ok = false; }
+        if (pass.length < 6) { showErr('su-pass-err', 'su-pass'); ok = false; }
+        if (pass !== pass2)  { showErr('su-pass2-err', 'su-pass2'); ok = false; }
+        if (!ok) return;
+
+        // Faqat bitta akkaunt — ism allaqachon bor bo'lsa rad etish
+        const existing = localStorage.getItem(STORAGE_KEY);
+        if (existing) {
+            const ex = JSON.parse(existing);
+            if (ex.name.toLowerCase() === name.toLowerCase()) {
+                showToast("Bu ism allaqachon ro'yxatdan o'tgan!", 'error');
+                return;
+            }
+        }
+
+        // Saqlash
+        const userData = { name, pass, createdAt: Date.now() };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+
+        showToast("✅ Muvaffaqiyatli ro'yxatdan o'tildi!");
+        setTimeout(() => switchTab('signin'), 800);
+
+        // Inputlarni tozalash
+        document.getElementById('su-name').value = '';
+        document.getElementById('su-pass').value = '';
+        document.getElementById('su-pass2').value = '';
+    }
+
+    // ════════════════════════════════════════
+    // SIGN IN
+    // ════════════════════════════════════════
+    function doSignIn() {
+        clearErrors();
+        const name = document.getElementById('si-name').value.trim();
+        const pass = document.getElementById('si-pass').value;
+
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) {
+            document.getElementById('si-err').classList.add('show');
+            return;
+        }
+
+        const user = JSON.parse(stored);
+        if (user.name.toLowerCase() !== name.toLowerCase() || user.pass !== pass) {
+            document.getElementById('si-err').classList.add('show');
+            document.getElementById('si-pass').classList.add('error');
+            return;
+        }
+
+        // Session saqlash
+        sessionStorage.setItem('logged_user', user.name);
+        showDashboard(user.name);
+    }
+
+    // ════════════════════════════════════════
+    // DASHBOARD
+    // ════════════════════════════════════════
+    async function showDashboard(name) {
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+
+        // Avatar harf
+        const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+        document.getElementById('dash-avatar').textContent = initials;
+        document.getElementById('dash-name').textContent = name;
+
+        // Bot dan foydalanuvchi ma'lumotlarini olish
+        await loadUserStats(name);
+
+        // Musobaqa ma'lumotlarini olish
+        await fetchTournament();
+    }
+
+    async function loadUserStats(name) {
+        try {
+            const res = await fetch('/api/user-stats?name=' + encodeURIComponent(name));
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('stat-score').textContent = data.score !== undefined ? parseFloat(data.score).toFixed(1) : '—';
+                document.getElementById('stat-tests').textContent = data.totalTests ?? '—';
+                document.getElementById('stat-univ').textContent  = data.univ || '—';
+                document.getElementById('stat-kurs').textContent  = data.kurs || '—';
+            } else {
+                setDefaultStats();
+            }
+        } catch {
+            setDefaultStats();
+        }
+    }
+
+    function setDefaultStats() {
+        document.getElementById('stat-score').textContent = '0';
+        document.getElementById('stat-tests').textContent = '0';
+        document.getElementById('stat-univ').textContent  = '—';
+        document.getElementById('stat-kurs').textContent  = '—';
     }
 
     async function fetchTournament() {
         try {
-            const response = await fetch('/api/tournament');
-            const tour = await response.json();
-            const container = document.getElementById('tour-data');
-            const btn = document.getElementById('reject-button');
+            const res = await fetch('/api/tournament');
+            const tour = await res.json();
+            const badge = document.getElementById('tour-badge');
+            const btn = document.getElementById('reject-btn');
 
-            if (tour && tour.isActive) {
-                container.innerHTML = `
-                    <p>📅 <b>Sana:</b> ${tour.date}</p>
-                    <p>🕒 <b>Vaqt:</b> ${tour.time}</p>
-                    <p>📝 <b>Savollar:</b> ${tour.count} ta</p>
-                `;
-                // Space button stilida bo'lsa, 'flex' qilish ma'qulroq
-                btn.style.display = 'flex'; 
+            if (tour?.isActive) {
+                badge.className = 'badge active';
+                badge.textContent = 'FAOL';
+                document.getElementById('ti-status').textContent = '✅ Faol';
+                document.getElementById('ti-date').textContent   = tour.date || '—';
+                document.getElementById('ti-time').textContent   = tour.time || '—';
+                document.getElementById('ti-count').textContent  = (tour.count || '—') + ' ta';
+                // Rad etish tugmasi faqat admin uchun — bu oddiy foydalanuvchi, yashirin
+                btn.style.display = 'none';
             } else {
-                container.innerHTML = "<p>❌ Hozircha rejalashtirilgan musobaqa yo'q.</p>";
+                badge.className = 'badge inactive';
+                badge.textContent = 'FAOL EMAS';
+                document.getElementById('ti-status').textContent = '❌ Yo\'q';
+                document.getElementById('ti-date').textContent   = '—';
+                document.getElementById('ti-time').textContent   = '—';
+                document.getElementById('ti-count').textContent  = '—';
                 btn.style.display = 'none';
             }
-        } catch (e) {
-            console.error("Xatolik:", e);
+        } catch {
+            document.getElementById('tour-badge').textContent = 'Xatolik';
         }
     }
 
-   async function confirmReject() {
-    // 1. Tasdiqlash oynasini chiqaramiz
-    if (confirm("Rostan ham ushbu musobaqani bekor qilmoqchimisiz?")) {
+    function doLogout() {
+        sessionStorage.removeItem('logged_user');
+        document.getElementById('dashboard').style.display = 'none';
+        document.getElementById('auth-section').style.display = 'block';
+        document.getElementById('si-name').value = '';
+        document.getElementById('si-pass').value = '';
+        switchTab('signin');
+    }
+
+    // ════════════════════════════════════════
+    // ADMIN MODAL
+    // ════════════════════════════════════════
+    function openAdminModal() {
+        document.getElementById('admin-modal').classList.add('show');
+        document.getElementById('admin-pass').value = '';
+        document.getElementById('admin-pass').focus();
+    }
+
+    function closeAdminModal() {
+        document.getElementById('admin-modal').classList.remove('show');
+    }
+
+    function checkAdmin() {
+        const val = document.getElementById('admin-pass').value;
+        if (val === ADMIN_SECRET) {
+            closeAdminModal();
+            showAdminDashboard();
+        } else {
+            document.getElementById('admin-pass').classList.add('error');
+            showToast("Parol noto'g'ri!", 'error');
+        }
+    }
+
+    async function showAdminDashboard() {
+        // Admin bo'lsa, dashboard ochib rad etish tugmasini ko'rsatish
+        const stored = localStorage.getItem(STORAGE_KEY);
+        const name = stored ? JSON.parse(stored).name : 'Admin';
+        sessionStorage.setItem('logged_user', name);
+
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+
+        const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || 'A';
+        document.getElementById('dash-avatar').textContent = initials;
+        document.getElementById('dash-name').textContent = name + ' (Admin)';
+
+        await loadUserStats(name);
+        await fetchTournamentAdmin();
+    }
+
+    async function fetchTournamentAdmin() {
         try {
-            // 2. Bot serveriga "o'chirish" buyrug'ini yuboramiz
-            const response = await fetch('/api/reject', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
+            const res = await fetch('/api/tournament');
+            const tour = await res.json();
+            const badge = document.getElementById('tour-badge');
+            const btn = document.getElementById('reject-btn');
 
-            // 3. Javobni tekshiramiz
-            if (response.ok) {
-                alert("✅ Musobaqa muvaffaqiyatli bekor qilindi!");
-                tg.close(); // Web App oynasini yopish
+            if (tour?.isActive) {
+                badge.className = 'badge active';
+                badge.textContent = 'FAOL';
+                document.getElementById('ti-status').textContent = '✅ Faol';
+                document.getElementById('ti-date').textContent   = tour.date || '—';
+                document.getElementById('ti-time').textContent   = tour.time || '—';
+                document.getElementById('ti-count').textContent  = (tour.count || '—') + ' ta';
+                btn.style.display = 'block';
             } else {
-                alert("❌ Xatolik! Server buyruqni qabul qilmadi.");
+                badge.className = 'badge inactive';
+                badge.textContent = 'FAOL EMAS';
+                document.getElementById('ti-status').textContent = '❌ Yo\'q';
+                document.getElementById('ti-date').textContent   = '—';
+                document.getElementById('ti-time').textContent   = '—';
+                document.getElementById('ti-count').textContent  = '—';
+                btn.style.display = 'none';
             }
-        } catch (error) {
-            console.error("Xatolik:", error);
-            alert("⚠️ Tarmoq xatosi! Server bilan bog'lanishda muammo yuz berdi.");
+        } catch {
+            document.getElementById('tour-badge').textContent = 'Xatolik';
         }
     }
-}
-</script>
+
+    async function confirmReject() {
+        if (!confirm("Rostan ham ushbu musobaqani bekor qilmoqchimisiz?")) return;
+        try {
+            const res = await fetch('/api/reject', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                showToast('✅ Musobaqa bekor qilindi!');
+                document.getElementById('reject-btn').style.display = 'none';
+                document.getElementById('tour-badge').className = 'badge inactive';
+                document.getElementById('tour-badge').textContent = 'FAOL EMAS';
+                document.getElementById('ti-status').textContent = '❌ Yo\'q';
+                if (tg) setTimeout(() => tg.close(), 1500);
+            } else {
+                showToast('❌ Server xatosi!', 'error');
+            }
+        } catch {
+            showToast('⚠️ Tarmoq xatosi!', 'error');
+        }
+    }
+
+    // ════════════════════════════════════════
+    // SAHIFA YUKLANGANDA — SESSION TEKSHIRISH
+    // ════════════════════════════════════════
+    window.addEventListener('DOMContentLoaded', () => {
+        const loggedName = sessionStorage.getItem('logged_user');
+        if (loggedName) {
+            // Sahifadan chiqib qayta kirsa ham akkaunt saqlanadi
+            showDashboard(loggedName);
+        } else {
+            // localStorage da akkaunt bormi? — sign in tabga o'tkazish
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) switchTab('signin');
+        }
+
+        // Enter tugmasi bilan kirish
+        document.getElementById('si-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doSignIn(); });
+        document.getElementById('su-pass2').addEventListener('keydown', e => { if (e.key === 'Enter') doSignUp(); });
+    });
+    </script>
 </body>
 </html>

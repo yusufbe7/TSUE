@@ -1456,6 +1456,22 @@ cron.schedule('* * * * *', async () => {
 // ============================================================
 // EXPRESS API
 // ============================================================
+// Foydalanuvchi statistikasini ismi orqali qaytarish
+app.get('/api/user-stats', (req, res) => {
+    const name = (req.query.name || '').toLowerCase().trim();
+    if (!name) return res.status(400).json({ error: 'name kerak' });
+    const db = getDb();
+    const user = Object.values(db.users).find(u => (u.name || '').toLowerCase().trim() === name);
+    if (!user) return res.status(404).json({ error: 'Topilmadi' });
+    res.json({
+        score:      user.score      || 0,
+        totalTests: user.totalTests || 0,
+        univ:       user.univ       || '—',
+        kurs:       user.kurs       || '—',
+        yonalish:   user.yonalish   || '—',
+    });
+});
+
 app.get('/api/tournament', (req, res) => {
     const db = getDb();
     res.json(db.tournament || { isActive: false });
