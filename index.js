@@ -71,7 +71,7 @@ function writeJSON(filePath, data) {
 
 const getDb        = ()  => readJSON(PATHS.db, { users: {}, settings: {} });
 const saveDb       = (d) => writeJSON(PATHS.db, d);
-const getSettings  = ()  => readJSON(PATHS.settings, { timeLimit: 30 });
+const getSettings  = ()  => readJSON(PATHS.settings, { timeLimit: 300 });
 const saveSettings = (s) => writeJSON(PATHS.settings, s);
 
 // ============================================================
