@@ -222,7 +222,7 @@ if (fs.existsSync(SUBJECTS_FILE)) {
         SUBJECTS = JSON.parse(rawData);
         console.log("✅ Savollar bazasi (subjects.json) muvaffaqiyatli yuklandi!");
     } catch (e) {
-        console.error("❌ subjects.json faylini o'qishda xato:", e);
+        console.error("❌ subjects.json faylini ichini o'qishda xato:", e);
     }
 } else {
     console.log("⚠️ subjects.json fayli topilmadi!");
@@ -230,10 +230,10 @@ if (fs.existsSync(SUBJECTS_FILE)) {
 
 
 let tournament = {
-    isActive: false,       // Musobaqa ochiqmi?
-    participants: [],      // To'lov qilgan foydalanuvchilar ID-lari
-    results: {},           // { userId: { score: 0, time: 0 } }
-    subject: null          // Musobaqa qaysi fandan bo'ladi?
+    isActive: false,       
+    participants: [],      
+    results: {},           
+    subject: null          
 };
 
 const TOURNAMENT_FILE = path.join(DATA_DIR, 'tournament_data.json');
