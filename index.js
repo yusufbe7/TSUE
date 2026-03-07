@@ -71,7 +71,7 @@ function writeJSON(filePath, data) {
 
 const getDb        = ()  => readJSON(PATHS.db, { users: {}, settings: {} });
 const saveDb       = (d) => writeJSON(PATHS.db, d);
-const getSettings  = ()  => readJSON(PATHS.settings, { timeLimit: 300 });
+const getSettings  = ()  => readJSON(PATHS.settings, { timeLimit: 30 });
 const saveSettings = (s) => writeJSON(PATHS.settings, s);
 
 // ============================================================
@@ -193,8 +193,10 @@ function updateGlobalScore(userId, name, username, score) {
         const u = db.users[userId];
         u.totalTests = (u.totalTests || 0) + 1;
         u.score      = (u.score || 0) + score;
-        u.name       = name;
-        u.username   = username;
+        // ✅ TUZATILDI: Ismni bazadagi to'g'ri ism bilan yangilaymiz
+        // Agar bazada haqiqiy ism bo'lsa, uni saqlaymiz — session ismi bilan ezib yubormaymiz
+        if (name && isValidName(name)) u.name = name;
+        if (username) u.username = username;
         saveDb(db);
     } catch (err) { console.error('[Score]', err.message); }
 }
@@ -209,16 +211,18 @@ function prepareTournamentQuestions(count) {
 // MENYU FUNKSIYALARI
 // ============================================================
 
-// ✅ TUZATILDI: adminMainKeyboard to'g'ri ishlaydi
+// ✅ TUZATILDI: adminMainKeyboard — vaqt tugmasi bilan
 function adminMainKeyboard(db) {
-    const s = db.settings || {};
+    const s         = db.settings || {};
     const statusBtn = s.isMaintenance ? '🟢 Botni Yoqish' : "🛑 Botni To'xtatish";
     const turboBtn  = s.turboMode     ? "🚀 Turbo (O'chirish)" : '🚀 Turbo (Yoqish)';
+    const tl        = botSettings?.timeLimit || 30;
     return Markup.keyboard([
         ['💰 Pullik versiya', '🆓 Bepul versiya'],
         ['🏆 Haftalik musobaqa', '🚀 Musobaqani start berish'],
         ['📢 Musobaqa natijalari', '📊 Statistika'],
         [statusBtn, turboBtn],
+        [`⏱ Vaqt: ${tl}s`, '➕ Yangi fan qoshish'],
         ["🗑 Botni Restart qilish", '🧹 Reytingni tozalash'],
         ['📣 Xabar tarqatish', '⬅️ Orqaga (Fanlar)'],
     ]).resize();
@@ -519,9 +523,32 @@ bot.start(async (ctx) => {
         return showSubjectMenu(ctx);
     }
 
+    // ✅ TUZATILDI: Mavjud ma'lumotlarni saqlab, faqat step'ni qayta boshlaydi
+    // Agar oldin ism kiritgan bo'lsa, uni eslab qoladi
     if (!db.users[userId]) {
-        db.users[userId] = { id: userId, username: ctx.from.username || "Noma'lum", name: '', univ: '', kurs: '', yonalish: '', score: 0, totalTests: 0, step: 'wait_name', isRegistered: false };
-        saveDb(db);
+        db.users[userId] = {
+            id: userId,
+            username: ctx.from.username || "Noma'lum",
+            name: '', univ: '', kurs: '', yonalish: '',
+            score: 0, totalTests: 0,
+            step: 'wait_name', isRegistered: false
+        };
+    } else {
+        // Qayta /start — step ni reset qil, lekin score va ism saqlanib qolsin
+        db.users[userId].step = 'wait_name';
+        db.users[userId].isRegistered = false;
+    }
+    saveDb(db);
+
+    // Agar oldin ism kiritgan bo'lsa, eslatma
+    const existingName = db.users[userId].name;
+    if (existingName && isValidName(existingName)) {
+        return ctx.replyWithHTML(
+            `✨ <b>Assalomu alaykum!</b>\n\n` +
+            `Avvalgi ismingiz: <b>${escapeHTML(existingName)}</b>\n\n` +
+            `Ism va familiyangizni qayta kiriting (yoki xuddi shuni yozing):`,
+            Markup.removeKeyboard()
+        );
     }
 
     return ctx.replyWithHTML(
@@ -842,6 +869,11 @@ bot.hears(['📝 Akademik yozuv','📜 Tarix','➕ Matematika','💻 Dasturlash 
 
     if (SUBJECTS[finalKey]?.questions) {
         s.currentSubject = finalKey;
+        // ✅ TUZATILDI: s.userName har doim o'rnatiladi
+        const dbU  = getDb();
+        const userU = dbU.users[ctx.from.id];
+        s.userName = (userU?.name && isValidName(userU.name)) ? userU.name : (ctx.from.first_name || 'Talaba');
+
         if (s.isTurbo) {
             const questions = SUBJECTS[finalKey].questions;
             if (!questions.length) return ctx.reply("Bu fanda savollar yo'q.");
@@ -866,6 +898,11 @@ bot.hears(["⚡️ Blitz (25)","📝 To'liq test"], async (ctx) => {
 
     const questions = SUBJECTS[s.currentSubject].questions;
     if (!questions?.length) return ctx.reply("Bu fanda savollar yo'q.");
+
+    // ✅ TUZATILDI: s.userName — bazadan olinadi, reyting to'g'ri ishlaydi
+    const db = getDb();
+    const user = db.users[userId];
+    s.userName = (user?.name && isValidName(user.name)) ? user.name : (ctx.from.first_name || 'Talaba');
 
     s.activeList = ctx.message.text.includes('25') ? shuffle(questions).slice(0, 25) : shuffle(questions);
     s.index = 0; s.score = 0; s.wrongs = [];
@@ -1029,10 +1066,15 @@ bot.hears('📣 Xabar tarqatish', (ctx) => {
     return ctx.reply("Yubormoqchi bo'lgan xabaringizni yuboring:", Markup.keyboard([['🚫 Bekor qilish']]).resize());
 });
 
-bot.hears("⏱ Vaqtni o'zgartirish", (ctx) => {
+// ✅ TUZATILDI: Vaqt tugmasi — dinamik nom bilan ishlaydi
+bot.hears(/^⏱ Vaqt: \d+s$/, (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     ctx.session.waitingForTime = true;
-    return ctx.reply('Vaqtni soniyalarda kiriting:', Markup.keyboard([['🚫 Bekor qilish']]).resize());
+    const cur = botSettings?.timeLimit || 30;
+    return ctx.reply(
+        `⏱ Hozirgi vaqt: <b>${cur} sekund</b>\n\nYangi vaqtni <b>soniyalarda</b> kiriting:\n(Masalan: 150 → 2.5 daqiqa)`,
+        { parse_mode: 'HTML', ...Markup.keyboard([['🚫 Bekor qilish']]).resize() }
+    );
 });
 
 bot.hears('➕ Yangi fan qoshish', (ctx) => {
@@ -1110,8 +1152,9 @@ bot.on(['text','photo','video','animation','document'], async (ctx, next) => {
         const val = parseInt(msgText);
         if (isNaN(val) || val < 5) return ctx.reply('❌ Xato raqam! Kamida 5 kiriting:');
         botSettings.timeLimit = val; saveSettings(botSettings); s.waitingForTime = false;
-        await ctx.reply(`✅ Savol vaqti ${val} soniyaga yangilandi.`);
-        return showSubjectMenu(ctx);
+        await ctx.reply(`✅ Savol vaqti <b>${val} sekund</b>ga yangilandi.`, { parse_mode: 'HTML' });
+        // ✅ Admin panelini yangilangan vaqt bilan qayta ko'rsatish
+        return ctx.reply('🛠 Admin Panel:', adminMainKeyboard(getDb()));
     }
 
     // Admin — yangi fan nomi
