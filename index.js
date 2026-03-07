@@ -19,8 +19,8 @@ const PORT      = process.env.PORT || 3000;
 
 // ✅ TUZATILDI: Ikkita kanal — majburiy obuna
 const REQUIRED_CHANNELS = [
-    { id: '@student_aitex', name: 'Student AITEX',  link: 'https://t.me/student_aitex' },
-    { id: '@yusufbe_dev',   name: 'Yusufbe Dev',    link: 'https://t.me/yusufbe_dev'   },
+    { id: '@student_aitex', name: 'Student AITEX',  link: 'https://t.me/Doniyorbeksblog' },
+    // { id: '@yusufbe_dev',   name: 'Yusufbe Dev',    link: 'https://t.me/yusufbe_dev'   },
 ];
 
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN env o'zgaruvchisi topilmadi!");
