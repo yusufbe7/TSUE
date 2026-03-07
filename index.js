@@ -19,7 +19,7 @@ const PORT      = process.env.PORT || 3000;
 
 // ✅ TUZATILDI: Ikkita kanal — majburiy obuna
 const REQUIRED_CHANNELS = [
-    { id: '@student_aitex', name: `Doniyorbek's blog`,  link: 'https://t.me/Doniyorbeksblog' },
+    { id: '@Doniyorbeksblog', name: `Doniyorbek's blog`,  link: 'https://t.me/Doniyorbeksblog' },
     // { id: '@yusufbe_dev',   name: 'Yusufbe Dev',    link: 'https://t.me/yusufbe_dev'   },
 ];
 
